@@ -1,0 +1,156 @@
+erDiagram
+    users ||--o{ profiles : has
+    users ||--o{ friends : participates
+    users ||--o{ purchases : makes
+    users ||--o{ game_sessions : hosts
+    users ||--o{ game_players : plays_as
+    avatars ||--o{ users : assigned_to
+    game_sessions ||--o{ game_players : includes
+    game_sessions ||--o{ game_events : generates
+    game_sessions ||--o{ chat_messages : contains
+    game_sessions ||--o{ votes : records
+    game_players ||--o{ game_events : initiates
+    game_players ||--o{ game_events : targets
+    game_players ||--o{ chat_messages : sends
+    game_players ||--o{ chat_messages : receives
+    game_players ||--o{ votes : casts
+    game_players ||--o{ votes : receives
+    roles ||--o{ game_players : assigned_to
+
+    users {
+        UUID user_id PK
+        VARCHAR(30) username
+        VARCHAR(255) email
+        VARCHAR(255) password_hash
+        TIMESTAMP created_at
+        TIMESTAMP last_login
+        ENUM account_status
+        BOOLEAN verification_status
+        INTEGER experience_points
+        INTEGER gold_coins
+        INTEGER gems
+        UUID avatar_id FK
+    }
+
+    profiles {
+        UUID profile_id PK
+        UUID user_id FK
+        VARCHAR(30) display_name
+        TEXT bio
+        VARCHAR(2) country_code
+        JSONB preferred_roles
+        JSONB stats
+        JSONB achievements
+        JSONB settings
+    }
+
+    avatars {
+        UUID avatar_id PK
+        VARCHAR(50) name
+        VARCHAR(255) image_url
+        ENUM rarity
+        BOOLEAN is_animated
+        BOOLEAN available
+        INTEGER price_gold
+        INTEGER price_gems
+    }
+
+    game_sessions {
+        UUID session_id PK
+        ENUM game_mode
+        ENUM status
+        ENUM current_phase
+        INTEGER current_day
+        INTEGER max_players
+        BOOLEAN password_protected
+        VARCHAR(255) password_hash
+        TIMESTAMP created_at
+        TIMESTAMP started_at
+        TIMESTAMP ended_at
+        UUID host_user_id FK
+        JSONB settings
+    }
+
+    game_players {
+        UUID player_id PK
+        UUID session_id FK
+        UUID user_id FK
+        UUID role_id FK
+        BOOLEAN is_alive
+        ENUM team
+        TIMESTAMP join_time
+        TIMESTAMP death_time
+        VARCHAR(100) death_cause
+        INTEGER position
+        JSONB temporary_effects
+        JSONB vote_history
+    }
+
+    roles {
+        UUID role_id PK
+        VARCHAR(50) name
+        TEXT description
+        ENUM team
+        ENUM category
+        ENUM ability_type
+        ENUM ability_target
+        VARCHAR(255) icon_url
+        ENUM rarity
+        BOOLEAN enabled
+    }
+
+    game_events {
+        UUID event_id PK
+        UUID session_id FK
+        VARCHAR(100) event_type
+        JSONB event_data
+        UUID initiator_id FK
+        UUID[] target_ids FK
+        ENUM phase
+        INTEGER day_number
+        TIMESTAMP timestamp
+        BOOLEAN is_public
+    }
+
+    chat_messages {
+        UUID message_id PK
+        UUID session_id FK
+        UUID sender_id FK
+        ENUM message_type
+        TEXT content
+        UUID recipient_id FK
+        TIMESTAMP timestamp
+        BOOLEAN is_censored
+        JSONB reactions
+    }
+
+    votes {
+        UUID vote_id PK
+        UUID session_id FK
+        INTEGER day_number
+        UUID voter_id FK
+        UUID target_id FK
+        ENUM vote_type
+        TIMESTAMP timestamp
+        INTEGER changed_count
+    }
+
+    friends {
+        UUID friendship_id PK
+        UUID user_id_1 FK
+        UUID user_id_2 FK
+        ENUM status
+        TIMESTAMP created_at
+        TIMESTAMP last_interaction
+    }
+
+    purchases {
+        UUID purchase_id PK
+        UUID user_id FK
+        ENUM item_type
+        UUID item_id
+        ENUM currency_type
+        DECIMAL(10,2) amount
+        TIMESTAMP purchase_date
+        VARCHAR(100) transaction_reference
+    }
