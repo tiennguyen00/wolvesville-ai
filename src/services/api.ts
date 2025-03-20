@@ -11,7 +11,7 @@ interface ImportMeta {
 
 // Create an axios instance with default configurations
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:3000",
+  baseURL: import.meta.env.VITE_API_URL || "http://localhost:5001",
   headers: {
     "Content-Type": "application/json",
   },

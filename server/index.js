@@ -65,6 +65,10 @@ app.get("/api/test-db", async (req, res) => {
     console.log("Connecting to PostgreSQL database...");
     await pool.query("SELECT 1"); // Simple query to test connection
     console.log("Database connection established successfully!");
+
+    // Initialize database tables and default data
+    await initializeDatabase();
+    console.log("Database initialized with required tables and data");
   } catch (error) {
     console.error("Database connection error:", error);
     console.log(
@@ -84,7 +88,7 @@ app.use((err, req, res, next) => {
 });
 
 // Start server
-const PORT = process.env.PORT || 5432;
+const PORT = process.env.PORT || 5001;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`API available at http://localhost:${PORT}/api`);

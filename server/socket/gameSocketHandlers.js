@@ -1,4 +1,6 @@
-const { pool } = require("../config/mock-db");
+const { pool } = require("../config/db");
+const Game = require("../models/Game");
+const Chat = require("../models/Chat");
 
 // Map to store active game sessions and their connected players
 const activeGames = new Map();

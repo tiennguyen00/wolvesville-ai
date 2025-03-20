@@ -22,7 +22,15 @@ module.exports = (req, res, next) => {
         token,
         process.env.JWT_SECRET || "dev-secret-key"
       );
-      req.user = decoded;
+
+      // Ensure both id and user_id are available for backward compatibility
+      req.user = {
+        ...decoded,
+        id: decoded.user_id || decoded.id, // Use user_id field from token, fallback to id
+      };
+
+      console.log("Auth middleware - User ID:", req.user.id);
+
       next();
     } catch (err) {
       return res.status(401).json({ message: "Token is invalid" });
