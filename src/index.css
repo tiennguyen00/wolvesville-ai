@@ -2,6 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Remove pixel art font import */
+/* @import url("https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap"); */
+
 body {
   @apply bg-gray-900 text-white;
   font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
@@ -45,4 +48,118 @@ body {
   to {
     opacity: 1;
   }
+}
+
+/* Pixel Art Styling - but keeping the default font */
+.pixel-text {
+  /* Using the default font instead of Press Start 2P */
+  letter-spacing: 0.05em;
+  line-height: 1.5;
+  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.5);
+}
+
+.pixel-button {
+  /* Using the default font instead of Press Start 2P */
+  font-size: 0.85rem;
+  padding: 0.75rem 1rem;
+  border: none;
+  position: relative;
+  transition: all 0.1s ease;
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.3);
+}
+
+.pixel-button:active {
+  transform: translateY(4px);
+  box-shadow: 0 0px 0 rgba(0, 0, 0, 0.3);
+}
+
+.pixel-container {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  border: 4px solid transparent;
+  border-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAACXBIWXMAAAsTAAALEwEAmpwYAAAAB3RJTUUH5AoTDQYIxyzLpAAAAB1pVFh0Q29tbWVudAAAAAAAQ3JlYXRlZCB3aXRoIEdJTVBkLmUHAAAAIklEQVQI12P8//8/AxL4z8DAcJ9hYWHh/8zMzAwwATADAIMQCZWmfjCFAAAAAElFTkSuQmCC")
+    2 stretch;
+}
+
+.pixel-border {
+  position: relative;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.pixel-border::before {
+  content: "";
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
+  background: transparent;
+  border: 2px solid transparent;
+  border-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAACXBIWXMAAAsTAAALEwEAmpwYAAAAB3RJTUUH5AoTDQYIxyzLpAAAAB1pVFh0Q29tbWVudAAAAAAAQ3JlYXRlZCB3aXRoIEdJTVBkLmUHAAAAIklEQVQI12P8//8/AxL4z8DAcJ9hYWHh/8zMzAwwATADAIMQCZWmfjCFAAAAAElFTkSuQmCC")
+    2 stretch;
+  pointer-events: none;
+}
+
+.pixel-card {
+  @apply bg-gray-800 rounded-lg shadow-lg overflow-hidden;
+  position: relative;
+  border: 4px solid;
+  border-image-slice: 2;
+  border-image-width: 2;
+  border-image-outset: 0;
+  border-image-source: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAACXBIWXMAAAsTAAALEwEAmpwYAAAAB3RJTUUH5AoTDQYIxyzLpAAAAB1pVFh0Q29tbWVudAAAAAAAQ3JlYXRlZCB3aXRoIEdJTVBkLmUHAAAAIklEQVQI12P8//8/AxL4z8DAcJ9hYWHh/8zMzAwwATADAIMQCZWmfjCFAAAAAElFTkSuQmCC");
+  image-rendering: pixelated;
+}
+
+/* Game creation specific pixel styling */
+.role-pixel-icon {
+  image-rendering: pixelated;
+  width: 32px;
+  height: 32px;
+}
+
+.pixel-checkbox {
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  background-color: #374151;
+  border: 2px solid transparent;
+  border-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAACXBIWXMAAAsTAAALEwEAmpwYAAAAB3RJTUUH5AoTDQYIxyzLpAAAAB1pVFh0Q29tbWVudAAAAAAAQ3JlYXRlZCB3aXRoIEdJTVBkLmUHAAAAIklEQVQI12P8//8/AxL4z8DAcJ9hYWHh/8zMzAwwATADAIMQCZWmfjCFAAAAAElFTkSuQmCC")
+    2 stretch;
+  position: relative;
+  cursor: pointer;
+}
+
+.pixel-checkbox:checked::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 12px;
+  height: 12px;
+  background-color: #8b5cf6;
+}
+
+.pixel-radio {
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  background-color: #374151;
+  border-radius: 0;
+  border: 2px solid transparent;
+  border-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAACXBIWXMAAAsTAAALEwEAmpwYAAAAB3RJTUUH5AoTDQYIxyzLpAAAAB1pVFh0Q29tbWVudAAAAAAAQ3JlYXRlZCB3aXRoIEdJTVBkLmUHAAAAIklEQVQI12P8//8/AxL4z8DAcJ9hYWHh/8zMzAwwATADAIMQCZWmfjCFAAAAAElFTkSuQmCC")
+    2 stretch;
+  position: relative;
+  cursor: pointer;
+}
+
+.pixel-radio:checked::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 12px;
+  height: 12px;
+  background-color: #8b5cf6;
 }

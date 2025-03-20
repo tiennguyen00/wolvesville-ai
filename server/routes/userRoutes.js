@@ -2,8 +2,9 @@ const express = require("express");
 const router = express.Router();
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const { pool } = require("../config/mock-db");
 const auth = require("../middleware/auth");
+const User = require("../models/User");
+const Statistics = require("../models/Statistics");
 
 // Test route to verify the router is working
 router.get("/test", (req, res) => {
@@ -24,12 +25,22 @@ router.post("/register", async (req, res) => {
         .json({ message: "Please provide all required fields" });
     }
 
-    // Mock user creation - in a real app, this would save to the database
-    const userId = "mock-user-" + Math.floor(Math.random() * 1000);
+    // Check if user already exists
+    const existingUser = await User.findByEmail(email);
+    if (existingUser) {
+      return res.status(400).json({ message: "User already exists" });
+    }
+
+    // Hash password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    // Create new user
+    const newUser = await User.create(username, email, hashedPassword);
 
     // Create JWT token
     const token = jwt.sign(
-      { user_id: userId },
+      { user_id: newUser.user_id },
       process.env.JWT_SECRET || "dev-secret-key",
       { expiresIn: "7d" }
     );
@@ -37,9 +48,9 @@ router.post("/register", async (req, res) => {
     res.status(201).json({
       message: "User registered successfully",
       user: {
-        user_id: userId,
-        username,
-        email,
+        user_id: newUser.user_id,
+        username: newUser.username,
+        email: newUser.email,
       },
       token,
     });
@@ -63,12 +74,21 @@ router.post("/login", async (req, res) => {
         .json({ message: "Please provide email and password" });
     }
 
-    // Mock user authentication - in a real app, this would verify credentials
-    const userId = "mock-user-" + Math.floor(Math.random() * 1000);
+    // Check if user exists
+    const user = await User.findByEmail(email);
+    if (!user) {
+      return res.status(400).json({ message: "Invalid credentials" });
+    }
+
+    // Validate password
+    const isMatch = await bcrypt.compare(password, user.password_hash);
+    if (!isMatch) {
+      return res.status(400).json({ message: "Invalid credentials" });
+    }
 
     // Create JWT token
     const token = jwt.sign(
-      { user_id: userId },
+      { user_id: user.user_id },
       process.env.JWT_SECRET || "dev-secret-key",
       { expiresIn: "7d" }
     );
@@ -76,12 +96,12 @@ router.post("/login", async (req, res) => {
     res.json({
       message: "Login successful",
       user: {
-        user_id: userId,
-        username: email.split("@")[0],
-        email,
-        experience_points: 125,
-        gold_coins: 100,
-        gems: 5,
+        user_id: user.user_id,
+        username: user.username,
+        email: user.email,
+        experience_points: user.experience_points,
+        gold_coins: user.gold_coins,
+        gems: user.gems,
       },
       token,
     });
@@ -93,54 +113,83 @@ router.post("/login", async (req, res) => {
 
 // @route   GET /api/users/me
 // @desc    Get current user profile
-// @access  Private (in a real app, this would be protected)
-router.get("/me", (req, res) => {
-  // For demo purposes, return mock user data
-  res.json({
-    user: {
-      user_id: "mock-user-id",
-      username: "demouser",
-      email: "demo@example.com",
-      experience_points: 250,
-      gold_coins: 150,
-      gems: 10,
-      account_status: "active",
-      verification_status: true,
-    },
-    profile: {
-      profile_id: "mock-profile-id",
-      display_name: "Demo Player",
-      bio: "I love playing Wolvesville!",
-      country_code: "US",
-      preferred_roles: ["Werewolf", "Seer"],
-      stats: {
-        games_played: 42,
-        games_won: 28,
-        favorite_role: "Werewolf",
-      },
-    },
-  });
+// @access  Private
+router.get("/me", auth, async (req, res) => {
+  try {
+    const userId = req.user.user_id;
+    const user = await User.getFullProfile(userId);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.json({ user });
+  } catch (error) {
+    console.error("Error fetching user profile:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
 });
 
 // @route   GET /api/users/stats
 // @desc    Get user stats
-// @access  Private (in a real app, this would be protected)
-router.get("/stats", (req, res) => {
-  // For demo purposes, return mock stats
-  res.json({
-    stats: {
-      total_games: 42,
-      games_won: 28,
-      win_rate: 66.7,
-      role_stats: {
-        Villager: 15,
-        Werewolf: 18,
-        Seer: 9,
-      },
-      best_streak: 5,
-      total_eliminations: 37,
-    },
-  });
+// @access  Private
+router.get("/stats", auth, async (req, res) => {
+  try {
+    const userId = req.user.user_id;
+    const stats = await Statistics.getUserStats(userId);
+
+    res.json({ stats });
+  } catch (error) {
+    console.error("Error fetching user stats:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+// @route   GET /api/users/stats/detailed
+// @desc    Get detailed user stats with period filtering
+// @access  Private
+router.get("/stats/detailed", auth, async (req, res) => {
+  try {
+    const userId = req.user.user_id;
+    const period = req.query.period || "all";
+
+    // Validate period
+    if (!["all", "month", "week"].includes(period)) {
+      return res.status(400).json({ message: "Invalid period parameter" });
+    }
+
+    const stats = await Statistics.getDetailedStats(userId, period);
+
+    res.json({ stats });
+  } catch (error) {
+    console.error("Error fetching detailed stats:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+// @route   PUT /api/users/profile
+// @desc    Update user profile
+// @access  Private
+router.put("/profile", auth, async (req, res) => {
+  try {
+    const userId = req.user.user_id;
+    const updateData = req.body;
+
+    // Update user profile
+    const updatedUser = await User.updateProfile(userId, updateData);
+
+    if (!updatedUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.json({
+      message: "Profile updated successfully",
+      user: updatedUser,
+    });
+  } catch (error) {
+    console.error("Error updating profile:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
 });
 
 module.exports = router;

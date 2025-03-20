@@ -2,7 +2,7 @@ const express = require("express");
 const http = require("http");
 const socketIo = require("socket.io");
 const cors = require("cors");
-const { pool, initializeDatabase } = require("./config/mock-db");
+const { pool, initializeDatabase } = require("./config/db");
 const { userRoutes, gameRoutes, chatRoutes } = require("./routes");
 const { setupGameSocketHandlers } = require("./socket/gameSocketHandlers");
 const { setupChatSocketHandlers } = require("./socket/chatSocketHandlers");
@@ -41,16 +41,20 @@ app.get("/", (req, res) => {
 // Database test connection
 app.get("/api/test-db", async (req, res) => {
   try {
-    const result = await pool.query("SELECT NOW()");
+    console.log("Testing database connection...");
+    const result = await pool.query("SELECT NOW() as current_time");
+    console.log("Database query successful:", result.rows[0]);
     res.json({
-      message: "Database connection successful (Mock DB)",
-      timestamp: result.rows[0].now,
+      message: "Database connection successful",
+      timestamp: result.rows[0].current_time,
+      success: true,
     });
   } catch (error) {
     console.error("Database connection error:", error);
     res.status(500).json({
       message: "Database connection failed",
       error: error.message,
+      success: false,
     });
   }
 });
@@ -58,13 +62,13 @@ app.get("/api/test-db", async (req, res) => {
 // Initialize database on startup
 (async () => {
   try {
-    console.log("Initializing mock database...");
-    await initializeDatabase();
-    console.log("Mock database initialized successfully!");
+    console.log("Connecting to PostgreSQL database...");
+    await pool.query("SELECT 1"); // Simple query to test connection
+    console.log("Database connection established successfully!");
   } catch (error) {
-    console.error("Database initialization error:", error);
+    console.error("Database connection error:", error);
     console.log(
-      "Server will start, but database may not be fully initialized."
+      "Server will start, but database functionalities may not work correctly."
     );
   }
 })();
@@ -83,6 +87,7 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 5432;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  console.log(`API available at http://localhost:${PORT}/api`);
 });
 
 module.exports = { app, server };

@@ -1,14 +1,23 @@
 import axios from "axios";
 
-// Set up default configs for axios
+// Define ImportMeta interface for Vite environment variables
+interface ImportMetaEnv {
+  VITE_API_URL?: string;
+}
+
+interface ImportMeta {
+  env: ImportMetaEnv;
+}
+
+// Create an axios instance with default configurations
 const api = axios.create({
-  baseURL: "http://localhost:5432", // Base URL for direct API calls
+  baseURL: import.meta.env.VITE_API_URL || "http://localhost:3000",
   headers: {
     "Content-Type": "application/json",
   },
 });
 
-// Add a request interceptor to include the token in every request
+// Add a request interceptor to inject the auth token
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem("token");
@@ -17,21 +26,22 @@ api.interceptors.request.use(
     }
     return config;
   },
-  (error) => Promise.reject(error)
+  (error) => {
+    return Promise.reject(error);
+  }
 );
 
-// Add a response interceptor to handle common errors
+// Add a response interceptor for error handling
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    return response;
+  },
   (error) => {
-    const { response } = error;
-
-    // Handle common errors here (e.g., 401 Unauthorized, 403 Forbidden)
-    if (response && response.status === 401) {
+    // Handle session expiration
+    if (error.response && error.response.status === 401) {
       localStorage.removeItem("token");
-      // Optionally redirect to login
+      window.location.href = "/login";
     }
-
     return Promise.reject(error);
   }
 );

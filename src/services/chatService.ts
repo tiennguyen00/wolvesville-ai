@@ -1,56 +1,83 @@
 import api from "./api";
 
-// Types
 export interface ChatMessage {
   message_id: string;
-  session_id: string;
+  game_id: string;
   sender_id: string;
-  sender_name: string;
-  message_type: "public" | "whisper" | "team";
+  sender_name?: string;
+  sender_team?: string;
+  message_type: "public" | "team" | "dead" | "private";
   content: string;
   timestamp: string;
-  is_censored: boolean;
-  reactions?: Record<string, number>;
-  recipient_id?: string;
-  recipient_name?: string;
+  recipients?: string[];
 }
 
-// Chat service functions
+export interface SendMessageRequest {
+  message_type: "public" | "team" | "dead" | "private";
+  content: string;
+  recipients?: string[];
+}
+
 const chatService = {
-  // Get chat messages for a game session
-  getMessages: async (sessionId: string, limit?: number) => {
-    const url = limit
-      ? `/api/chat/${sessionId}?limit=${limit}`
-      : `/api/chat/${sessionId}`;
-    const response = await api.get(url);
-    return response.data.messages as ChatMessage[];
+  // Get all messages for a game
+  getMessages: async (gameId: string): Promise<ChatMessage[]> => {
+    try {
+      const response = await api.get(`/api/games/${gameId}/messages`);
+      return response.data.messages || [];
+    } catch (error) {
+      console.error("Error fetching messages:", error);
+      return [];
+    }
   },
 
-  // Get chat history for a completed game
-  getChatHistory: async (sessionId: string) => {
-    const response = await api.get(`/api/chat/${sessionId}/history`);
-    return response.data.messages as ChatMessage[];
-  },
-
-  // Send a message
-  sendMessage: async (sessionId: string, message: Partial<ChatMessage>) => {
-    const response = await api.post(`/api/chat/${sessionId}`, message);
-    return response.data;
-  },
-
-  // Add reaction to a message
-  addReaction: async (
-    sessionId: string,
-    messageId: string,
-    reactionType: string
-  ) => {
+  // Send a message in a game
+  sendMessage: async (
+    gameId: string,
+    messageData: SendMessageRequest
+  ): Promise<ChatMessage> => {
     const response = await api.post(
-      `/api/chat/${sessionId}/messages/${messageId}/reaction`,
-      {
-        reaction_type: reactionType,
-      }
+      `/api/games/${gameId}/messages`,
+      messageData
     );
-    return response.data;
+    return response.data.message;
+  },
+
+  // Get private messages between two users
+  getPrivateMessages: async (
+    gameId: string,
+    otherUserId: string
+  ): Promise<ChatMessage[]> => {
+    try {
+      const response = await api.get(
+        `/api/games/${gameId}/messages/private/${otherUserId}`
+      );
+      return response.data.messages || [];
+    } catch (error) {
+      console.error("Error fetching private messages:", error);
+      return [];
+    }
+  },
+
+  // Get team chat messages
+  getTeamMessages: async (gameId: string): Promise<ChatMessage[]> => {
+    try {
+      const response = await api.get(`/api/games/${gameId}/messages/team`);
+      return response.data.messages || [];
+    } catch (error) {
+      console.error("Error fetching team messages:", error);
+      return [];
+    }
+  },
+
+  // Get spectator (dead players) chat messages
+  getSpectatorMessages: async (gameId: string): Promise<ChatMessage[]> => {
+    try {
+      const response = await api.get(`/api/games/${gameId}/messages/spectator`);
+      return response.data.messages || [];
+    } catch (error) {
+      console.error("Error fetching spectator messages:", error);
+      return [];
+    }
   },
 };
 

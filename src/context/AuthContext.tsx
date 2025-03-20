@@ -10,6 +10,16 @@ type User = {
   experience_points: number;
   gold_coins: number;
   gems: number;
+  avatar?: string;
+  bio?: string;
+};
+
+// Define the type of data that can be updated
+type UserProfileUpdate = {
+  username?: string;
+  email?: string;
+  avatar?: string;
+  bio?: string;
 };
 
 type AuthContextType = {
@@ -24,6 +34,7 @@ type AuthContextType = {
     password: string
   ) => Promise<void>;
   logout: () => void;
+  updateUserProfile: (userData: UserProfileUpdate) => Promise<void>;
   error: string | null;
 };
 
@@ -101,6 +112,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
+  // Update user profile function
+  const updateUserProfile = async (userData: UserProfileUpdate) => {
+    try {
+      setError(null);
+      const res = await api.put("/api/users/profile", userData);
+      setUser((prev) => (prev ? { ...prev, ...userData } : null));
+      return res.data;
+    } catch (err: any) {
+      setError(err.response?.data?.message || "Profile update failed");
+      throw err;
+    }
+  };
+
   // Logout function
   const logout = () => {
     localStorage.removeItem("token");
@@ -118,6 +142,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         login,
         register,
         logout,
+        updateUserProfile,
         error,
       }}
     >

@@ -41,6 +41,34 @@ export interface UserStats {
   total_eliminations: number;
 }
 
+export type StatPeriod = "all" | "month" | "week";
+
+export interface DetailedUserStats extends UserStats {
+  period: StatPeriod;
+  average_game_duration: number;
+  recent_games: Array<{
+    game_id: string;
+    date: string;
+    game_mode: string;
+    role: string;
+    result: "victory" | "defeat";
+    xp_earned: number;
+  }>;
+}
+
+export interface GameHistoryItem {
+  game_id: string;
+  date: string;
+  game_mode: string;
+  role: string;
+  result: "victory" | "defeat";
+  xp_earned: number;
+}
+
+export interface GameHistoryResponse {
+  games: GameHistoryItem[];
+}
+
 // User service functions
 const userService = {
   // Register a new user
@@ -67,10 +95,26 @@ const userService = {
     return response.data.stats as UserStats;
   },
 
+  // Get detailed user stats by time period
+  getUserStatsByPeriod: async (period: StatPeriod = "all") => {
+    const response = await api.get(
+      `/api/users/stats/detailed?period=${period}`
+    );
+    return response.data.stats as DetailedUserStats;
+  },
+
   // Update user profile
   updateProfile: async (profileData: Partial<UserProfile>) => {
     const response = await api.put("/api/users/profile", profileData);
     return response.data;
+  },
+
+  // Get user game history
+  getGameHistory: async (page = 1, limit = 20) => {
+    const response = await api.get(
+      `/api/users/history?page=${page}&limit=${limit}`
+    );
+    return response.data as GameHistoryResponse;
   },
 };
 

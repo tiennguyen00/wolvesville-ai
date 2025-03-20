@@ -26,13 +26,25 @@ const Dashboard: React.FC = () => {
                   to="/games"
                   className="text-gray-300 hover:text-purple-400"
                 >
-                  Browse Games
+                  Games
                 </Link>
                 <Link
                   to="/profile"
                   className="text-gray-300 hover:text-purple-400"
                 >
                   Profile
+                </Link>
+                <Link
+                  to="/stats"
+                  className="text-gray-300 hover:text-purple-400"
+                >
+                  Stats
+                </Link>
+                <Link
+                  to="/history"
+                  className="text-gray-300 hover:text-purple-400"
+                >
+                  History
                 </Link>
                 <Link
                   to="/shop"
@@ -87,6 +99,18 @@ const Dashboard: React.FC = () => {
                     View Profile
                   </Link>
                   <Link
+                    to="/stats"
+                    className="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-700"
+                  >
+                    Statistics
+                  </Link>
+                  <Link
+                    to="/history"
+                    className="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-700"
+                  >
+                    Game History
+                  </Link>
+                  <Link
                     to="/settings"
                     className="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-700"
                   >
@@ -115,28 +139,47 @@ const Dashboard: React.FC = () => {
         {/* Game Options */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
           <div className="card transform hover:scale-105 transition-transform">
-            <h2 className="text-xl font-bold mb-4 text-white">Quick Play</h2>
+            <h2 className="text-xl font-bold mb-4 text-white pixel-text">
+              Quick Play
+            </h2>
             <p className="text-gray-300 mb-6">
               Join a random game with other players. Get matched quickly and
               start playing within seconds.
             </p>
-            <button className="btn-primary w-full">Find Game</button>
+            <Link
+              to="/games"
+              className="btn-primary w-full block text-center pixel-button"
+            >
+              Find Game
+            </Link>
           </div>
           <div className="card transform hover:scale-105 transition-transform">
-            <h2 className="text-xl font-bold mb-4 text-white">Create Game</h2>
+            <h2 className="text-xl font-bold mb-4 text-white pixel-text">
+              Create Game
+            </h2>
             <p className="text-gray-300 mb-6">
               Create a custom game with your own rules and settings. Invite
               friends or open it to the public.
             </p>
-            <button className="btn-primary w-full">Create New Game</button>
+            <Link
+              to="/create-game"
+              className="btn-primary w-full block text-center pixel-button"
+            >
+              Create New Game
+            </Link>
           </div>
           <div className="card transform hover:scale-105 transition-transform">
-            <h2 className="text-xl font-bold mb-4 text-white">Browse Games</h2>
+            <h2 className="text-xl font-bold mb-4 text-white pixel-text">
+              Browse Games
+            </h2>
             <p className="text-gray-300 mb-6">
               Browse all available game lobbies. Filter by game mode, player
               count, and more.
             </p>
-            <Link to="/games" className="btn-primary w-full block text-center">
+            <Link
+              to="/games"
+              className="btn-primary w-full block text-center pixel-button"
+            >
               Browse Lobbies
             </Link>
           </div>
@@ -162,6 +205,14 @@ const Dashboard: React.FC = () => {
               <div className="text-4xl font-bold text-white mb-2">5</div>
               <div className="text-gray-400">Best Streak</div>
             </div>
+          </div>
+          <div className="mt-4 text-right">
+            <Link
+              to="/stats"
+              className="text-purple-500 hover:text-purple-400 text-sm font-medium"
+            >
+              View detailed statistics →
+            </Link>
           </div>
         </div>
 
