@@ -748,6 +748,108 @@ class Game {
       throw error;
     }
   }
+
+  // Kick a player from a game
+  static async kickPlayer(sessionId, hostUserId, targetUserId) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      // Verify game exists and is in lobby state
+      const gameQuery = `
+        SELECT 
+          session_id, 
+          host_user_id,
+          status
+        FROM 
+          game_sessions
+        WHERE 
+          session_id = $1
+      `;
+      const gameResult = await client.query(gameQuery, [sessionId]);
+
+      if (gameResult.rows.length === 0) {
+        throw new Error("Game not found");
+      }
+
+      const game = gameResult.rows[0];
+
+      // Verify user is the host
+      if (game.host_user_id !== hostUserId) {
+        throw new Error("Only the host can kick players");
+      }
+
+      // Verify game is in lobby state
+      if (game.status !== "lobby") {
+        throw new Error("Players can only be kicked while in the lobby");
+      }
+
+      // Verify target player exists in the game
+      const playerQuery = `
+        SELECT player_id 
+        FROM game_players
+        WHERE session_id = $1 AND user_id = $2
+      `;
+      const playerResult = await client.query(playerQuery, [
+        sessionId,
+        targetUserId,
+      ]);
+
+      if (playerResult.rows.length === 0) {
+        throw new Error("Target player not found in this game");
+      }
+
+      const playerId = playerResult.rows[0].player_id;
+      console.log("playerId", playerId);
+
+      // Delete the player from the game
+      const deleteQuery = `
+        DELETE FROM game_players
+        WHERE player_id = $1
+        RETURNING player_id
+      `;
+      await client.query(deleteQuery, [playerId]);
+
+      // Record the kick event in the format that matches the game_events table schema
+      // Based on db-setup.sql, the table has: game_id, event_type, event_data, created_at
+      try {
+        await client.query(
+          `
+          INSERT INTO game_events (
+            game_id,
+            event_type,
+            event_data
+          )
+          VALUES ($1, $2, $3)
+        `,
+          [
+            sessionId, // This assumes game_id is the same as session_id in this context
+            "player_kicked",
+            JSON.stringify({
+              host_id: hostUserId,
+              target_user_id: targetUserId,
+              timestamp: new Date().toISOString(),
+            }),
+          ]
+        );
+      } catch (eventError) {
+        console.warn(
+          "Could not record kick event, but player was kicked",
+          eventError.message
+        );
+        // Don't throw error here - kick was successful even if we can't record the event
+      }
+
+      await client.query("COMMIT");
+      return { success: true, player_id: playerId };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      console.error("Error kicking player:", error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
 }
 
 module.exports = Game;

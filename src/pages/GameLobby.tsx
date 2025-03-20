@@ -64,11 +64,12 @@ const GameLobby: React.FC = () => {
     fetchGameData();
 
     // Polling interval for game updates
-    const interval = setInterval(fetchGameData, 5000);
-    return () => clearInterval(interval);
+    // const interval = setInterval(fetchGameData, 5000);
+    // return () => clearInterval(interval);
   }, [gameId, isAuthenticated, navigate, user?.username]);
 
   const startCountdown = () => {
+    console.log("starting countdown");
     setCountdown(10);
 
     const timer = setInterval(() => {
@@ -94,7 +95,7 @@ const GameLobby: React.FC = () => {
 
     try {
       // In a real app, this would change the game status to "in_progress"
-      await gameService.performAction(gameId, "start_game", {});
+      await gameService.startGame(gameId);
       navigate(`/game/play/${gameId}`);
     } catch (err) {
       console.error("Error starting game:", err);
@@ -107,7 +108,7 @@ const GameLobby: React.FC = () => {
 
     try {
       // In a real app, this would remove the player from the game
-      await gameService.performAction(gameId, "leave_game", {});
+      await gameService.leaveGame(gameId);
       navigate("/games");
     } catch (err) {
       console.error("Error leaving game:", err);
@@ -115,17 +116,35 @@ const GameLobby: React.FC = () => {
     }
   };
 
-  const handleKickPlayer = (playerId: string) => {
+  const handleKickPlayer = async (playerId: string) => {
     if (!gameId) return;
 
-    gameService
-      .performAction(gameId, "kick_player", {
-        player_id: playerId,
-      })
-      .catch((err) => {
-        console.error("Error kicking player:", err);
-        setError("Failed to kick player. Please try again.");
-      });
+    try {
+      // Show confirmation dialog
+      if (!window.confirm("Are you sure you want to kick this player?")) {
+        return;
+      }
+
+      await gameService.kickPlayer(gameId, playerId);
+
+      // Update the player list after kicking
+      setPlayers(players.filter((player) => player.user_id !== playerId));
+
+      // Show a temporary notification
+      const notification = document.createElement("div");
+      notification.className =
+        "fixed px-4 py-2 text-white bg-green-800 rounded shadow-lg top-4 right-4";
+      notification.textContent = "Player kicked successfully";
+      document.body.appendChild(notification);
+
+      // Remove notification after 3 seconds
+      setTimeout(() => {
+        document.body.removeChild(notification);
+      }, 3000);
+    } catch (err) {
+      console.error("Error kicking player:", err);
+      setError("Failed to kick player. Please try again.");
+    }
   };
 
   if (loading) {
@@ -177,6 +196,9 @@ const GameLobby: React.FC = () => {
               <button
                 onClick={startCountdown}
                 className="flex items-center justify-center btn-primary pixel-button"
+                style={{
+                  opacity: players.length < 3 ? 0.25 : 1,
+                }}
                 disabled={players.length < 3} // Require at least 3 players
               >
                 <svg

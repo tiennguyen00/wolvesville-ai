@@ -120,15 +120,8 @@ const gameService = {
   },
 
   // Perform game action (vote, use ability, etc.)
-  performAction: async (
-    gameId: string,
-    actionType: string,
-    actionData: any
-  ) => {
-    const response = await api.post(`/api/games/${gameId}/action`, {
-      action_type: actionType,
-      action_data: actionData,
-    });
+  performAction: async (gameId: string, actionData: any) => {
+    const response = await api.post(`/api/games/${gameId}/actions`, actionData);
     return response.data;
   },
 
@@ -140,8 +133,9 @@ const gameService = {
 
   // Vote for a player during day phase
   votePlayer: async (gameId: string, targetPlayerId: string) => {
-    return gameService.performAction(gameId, "vote", {
+    return gameService.performAction(gameId, {
       target_id: targetPlayerId,
+      action_type: "vote",
     });
   },
 
@@ -151,25 +145,42 @@ const gameService = {
     targetPlayerId: string,
     abilityType: string
   ) => {
-    return gameService.performAction(gameId, "ability", {
+    return gameService.performAction(gameId, {
       target_id: targetPlayerId,
-      ability_type: abilityType,
+      action_type: "ability",
     });
   },
 
   // Skip using ability for the night
   skipAbility: async (gameId: string) => {
-    return gameService.performAction(gameId, "ability", { skip: true });
+    return gameService.performAction(gameId, {
+      skip: true,
+      action_type: "ability",
+    });
   },
 
   // Mark player as ready for next phase
   readyForNextPhase: async (gameId: string) => {
-    return gameService.performAction(gameId, "ready", {});
+    return gameService.performAction(gameId, "ready");
   },
 
   // Leave ongoing game
   leaveGame: async (gameId: string) => {
     const response = await api.post(`/api/games/${gameId}/leave`);
+    return response.data;
+  },
+
+  // Start the game (host only)
+  startGame: async (gameId: string) => {
+    const response = await api.post(`/api/games/${gameId}/start`);
+    return response.data;
+  },
+
+  // Kick a player from the game (host only)
+  kickPlayer: async (gameId: string, playerId: string) => {
+    const response = await api.post(`/api/games/${gameId}/kick`, {
+      target_user_id: playerId,
+    });
     return response.data;
   },
 

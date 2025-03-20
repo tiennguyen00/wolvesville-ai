@@ -450,4 +450,46 @@ router.delete("/:id/chat/:message_id/reactions", auth, async (req, res) => {
   }
 });
 
+// @route   POST /api/games/:id/kick
+// @desc    Kick a player from the game (host only)
+// @access  Private
+router.post("/:id/kick", auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { target_user_id } = req.body;
+    const hostUserId = req.user.id;
+
+    // Basic validation
+    if (!target_user_id) {
+      return res.status(400).json({
+        message: "Target user ID is required",
+      });
+    }
+
+    const result = await Game.kickPlayer(id, hostUserId, target_user_id);
+
+    res.json({
+      message: "Player kicked successfully",
+      player_id: result.player_id,
+    });
+  } catch (error) {
+    console.error("Error kicking player:", error);
+
+    // Handle specific errors
+    if (
+      error.message === "Game not found" ||
+      error.message === "Target player not found in this game"
+    ) {
+      return res.status(404).json({ message: error.message });
+    } else if (
+      error.message === "Only the host can kick players" ||
+      error.message === "Players can only be kicked while in the lobby"
+    ) {
+      return res.status(403).json({ message: error.message });
+    }
+
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
 module.exports = router;

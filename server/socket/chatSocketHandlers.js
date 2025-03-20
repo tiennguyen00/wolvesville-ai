@@ -1,5 +1,4 @@
-const { pool } = require("../config/db");
-const Chat = require("../models/Chat");
+const { pool } = require("../config/mock-db");
 
 // Setup chat-related socket event handlers
 const setupChatSocketHandlers = (io) => {
