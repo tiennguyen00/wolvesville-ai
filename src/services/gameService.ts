@@ -1,20 +1,36 @@
 import api from "./api";
 
 // Types
+export type AccountStatusType = "active" | "suspended" | "banned" | "inactive";
+export type GameStatusType =
+  | "lobby"
+  | "in_progress"
+  | "completed"
+  | "abandoned";
+export type GamePhaseType = "lobby" | "day" | "night" | "voting" | "results";
+export type GameResultType = "victory" | "defeat" | "draw" | "abandoned";
+export type ChatTypeEnum =
+  | "public"
+  | "werewolf"
+  | "dead"
+  | "private"
+  | "system";
+
 export interface GameSession {
-  session_id: string;
-  game_name: string;
+  game_id: string; // UUID in database
   game_mode: string;
-  status: "lobby" | "in_progress" | "completed";
+  host_id: string; // References users(user_id)
+  status: GameStatusType;
   max_players: number;
-  current_players: number;
-  host_username: string;
+  current_phase: GamePhaseType;
+  password_protected: boolean;
+  game_password?: string;
   created_at: string;
   started_at?: string;
-  completed_at?: string;
-  password_protected: boolean;
-  settings?: GameSettings;
+  ended_at?: string;
+  winner_faction?: string;
   players?: GamePlayer[];
+  settings?: GameSettings;
 }
 
 export interface GameSettings {
@@ -27,36 +43,68 @@ export interface GameSettings {
 }
 
 export interface GamePlayer {
-  player_id: string;
+  id: string;
   user_id: string;
-  username: string;
-  position: number;
-  join_time: string;
+  game_id: string;
+  role_id?: string; // References roles(role_id)
   is_alive: boolean;
-  role?: string;
-  team?: string;
+  result?: GameResultType;
+  eliminations: number;
+  xp_earned: number;
+  coins_earned: number;
+  played_at: string;
+  username?: string; // Joined from users table
+  avatar?: string; // Joined from users table
 }
 
 export interface GameEvent {
   event_id: string;
+  game_id: string;
   event_type: string;
   event_data: Record<string, any>;
-  target_ids?: string[];
-  phase: "day" | "night";
-  day_number: number;
-  timestamp: string;
-  is_public: boolean;
+  created_at: string;
+}
+
+export interface GameVote {
+  vote_id: string;
+  game_id: string;
+  voter_id: string;
+  target_id?: string;
+  vote_type: string;
+  phase_number: number;
+  created_at: string;
 }
 
 export interface Role {
   role_id: string;
+  role_name: string;
+  faction: string;
+  description: string;
+  ability_description?: string;
+  icon?: string;
+  created_at: string;
+}
+
+export interface Item {
+  item_id: string;
   name: string;
   description: string;
-  team: string;
-  category: string;
-  ability_type: string | null;
-  ability_target: string | null;
-  enabled: boolean;
+  price_coins?: number;
+  price_gems?: number;
+  item_type: string;
+  rarity: string;
+  icon?: string;
+  created_at: string;
+}
+
+export interface Achievement {
+  achievement_id: string;
+  name: string;
+  description: string;
+  icon?: string;
+  points: number;
+  difficulty: string;
+  created_at: string;
 }
 
 export interface PlayerAction {
@@ -66,13 +114,24 @@ export interface PlayerAction {
 }
 
 export interface GameState {
-  phase: "day" | "night";
+  phase: GamePhaseType;
   day_number: number;
   time_remaining: number;
   current_action: string | null;
   votes: Record<string, string[]>;
   eliminated_players: string[];
   role_actions: Record<string, boolean>;
+}
+
+export interface ChatMessage {
+  message_id: string;
+  game_id: string;
+  user_id?: string;
+  message: string;
+  chat_type: ChatTypeEnum;
+  sent_at: string;
+  username?: string; // Joined from users table
+  avatar?: string; // Joined from users table
 }
 
 // Game service functions

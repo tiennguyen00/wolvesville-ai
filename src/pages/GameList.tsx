@@ -53,8 +53,8 @@ const GameList: React.FC = () => {
     }
 
     try {
-      await gameService.joinGame(game.session_id);
-      navigate(`/game/lobby/${game.session_id}`);
+      await gameService.joinGame(game.game_id);
+      navigate(`/game/lobby/${game.game_id}`);
     } catch (err) {
       console.error("Error joining game:", err);
       setJoinError(
@@ -69,14 +69,32 @@ const GameList: React.FC = () => {
     if (!selectedGame) return;
 
     try {
-      await gameService.joinGame(selectedGame.session_id, passwordInput);
+      await gameService.joinGame(selectedGame.game_id, passwordInput);
       setPasswordInput("");
       setSelectedGame(null);
-      navigate(`/game/lobby/${selectedGame.session_id}`);
+      navigate(`/game/lobby/${selectedGame.game_id}`);
     } catch (err) {
       console.error("Error joining password-protected game:", err);
       setJoinError("Incorrect password or the game is no longer available.");
     }
+  };
+
+  // Helper function to get host username from players array
+  const getHostUsername = (game: GameSession) => {
+    if (!game.players || game.players.length === 0) return "Unknown";
+
+    const hostPlayer = game.players.find((p) => p.user_id === game.host_id);
+    return hostPlayer?.username || "Unknown";
+  };
+
+  // Helper function to get current players count
+  const getCurrentPlayersCount = (game: GameSession) => {
+    return game.players?.length || 0;
+  };
+
+  // Helper function to get game display name
+  const getGameDisplayName = (game: GameSession) => {
+    return `Game #${game.game_id.slice(0, 8)}`;
   };
 
   const getStatusBadge = (game: GameSession) => {
@@ -190,13 +208,13 @@ const GameList: React.FC = () => {
           {games.length > 0 ? (
             games.map((game) => (
               <div
-                key={game.session_id}
+                key={game.game_id}
                 className="overflow-hidden bg-gray-800 border-2 border-gray-700 rounded-lg pixel-container"
               >
                 <div className="p-4">
                   <div className="flex items-start justify-between mb-3">
                     <h2 className="text-xl font-bold text-purple-400 truncate pixel-text">
-                      {game.game_name}
+                      {getGameDisplayName(game)}
                     </h2>
                     {getStatusBadge(game)}
                   </div>
@@ -205,13 +223,13 @@ const GameList: React.FC = () => {
                     <div className="flex justify-between mb-1">
                       <span>Host:</span>
                       <span className="font-medium text-gray-300">
-                        {game.host_username}
+                        {getHostUsername(game)}
                       </span>
                     </div>
                     <div className="flex justify-between mb-1">
                       <span>Players:</span>
                       <span className="font-medium text-gray-300">
-                        {game.current_players} / {game.max_players}
+                        {getCurrentPlayersCount(game)} / {game.max_players}
                       </span>
                     </div>
                     <div className="flex justify-between">
@@ -243,7 +261,7 @@ const GameList: React.FC = () => {
 
                     <div className="flex space-x-2">
                       {game.status === "lobby" &&
-                        game.current_players < game.max_players && (
+                        getCurrentPlayersCount(game) < game.max_players && (
                           <button
                             onClick={() => handleJoinGame(game)}
                             className="w-full px-3 py-2 font-medium text-white bg-purple-600 rounded hover:bg-purple-700 pixel-button"
@@ -258,7 +276,7 @@ const GameList: React.FC = () => {
                           (p) => p.user_id === user.user_id
                         ) && (
                           <Link
-                            to={`/game/play/${game.session_id}`}
+                            to={`/game/play/${game.game_id}`}
                             className="w-full px-3 py-2 font-medium text-center text-white bg-green-600 rounded hover:bg-green-700 pixel-button"
                           >
                             Rejoin Game
@@ -267,7 +285,7 @@ const GameList: React.FC = () => {
 
                       {game.status === "completed" && (
                         <Link
-                          to={`/game/summary/${game.session_id}`}
+                          to={`/game/summary/${game.game_id}`}
                           className="w-full px-3 py-2 font-medium text-center text-white bg-gray-600 rounded hover:bg-gray-700 pixel-button"
                         >
                           View Summary
@@ -305,7 +323,7 @@ const GameList: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75">
           <div className="w-full max-w-md p-6 bg-gray-800 border-2 border-purple-500 rounded-lg pixel-container">
             <h3 className="mb-4 text-xl font-bold pixel-text">
-              Enter Password for "{selectedGame.game_name}"
+              Enter Password for "{getGameDisplayName(selectedGame)}"
             </h3>
             <form onSubmit={handlePasswordSubmit} className="space-y-4">
               <div>

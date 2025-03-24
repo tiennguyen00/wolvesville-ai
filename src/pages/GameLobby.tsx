@@ -16,6 +16,28 @@ const GameLobby: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [isHost, setIsHost] = useState(false);
+  const [hostUsername, setHostUsername] = useState<string>("");
+
+  const checkIfKicked = (currentPlayers: GamePlayer[]) => {
+    // Only check if user was previously in the game
+    if (!user) return false;
+
+    // Check if user is still in the player list
+    const isStillInGame = currentPlayers.some(
+      (player) => player.user_id === user.user_id
+    );
+
+    if (!isStillInGame) {
+      // Player was in the game but is not anymore - they were kicked
+      console.log("Player was kicked from the game");
+      navigate("/games", {
+        state: { message: "You have been removed from the game" },
+      });
+      return true;
+    }
+
+    return false;
+  };
 
   const fetchGameData = async () => {
     if (!gameId) {
@@ -26,24 +48,31 @@ const GameLobby: React.FC = () => {
 
     try {
       const gameData = await gameService.getGameById(gameId);
+
+      // Use the checkIfKicked function to handle kicked players
+      if (gameData.players && checkIfKicked(gameData.players)) {
+        navigate("/games", {
+          state: { message: "You have been removed from the game" },
+        });
+        return; // Stop execution if user was kicked
+      }
+
       setGame(gameData);
+
       setPlayers(gameData.players || []);
 
+      // Find host username from players list
+      const hostPlayer = gameData.players?.find(
+        (p) => p.user_id === gameData.host_id
+      );
+      setHostUsername(hostPlayer?.username || "Unknown Host");
+
       // Check if current user is the host
-      setIsHost(gameData.host_username === user?.username);
+      setIsHost(gameData.host_id === user?.user_id);
 
       // Check if game has moved to in_progress state
       if (gameData.status === "in_progress") {
         navigate(`/game/play/${gameId}`);
-      }
-
-      // Fetch available roles for the role labels
-      try {
-        const roles = await gameService.getRoles();
-        setAvailableRoles(roles);
-      } catch (err) {
-        console.error("Error fetching roles:", err);
-        // Non-critical error, don't set the main error state
       }
 
       setError(null);
@@ -55,6 +84,15 @@ const GameLobby: React.FC = () => {
     }
   };
 
+  const fetchRoles = async () => {
+    try {
+      const roles = await gameService.getRoles();
+      setAvailableRoles(roles);
+    } catch (err) {
+      console.error("Error fetching roles:", err);
+    }
+  };
+
   useEffect(() => {
     if (!isAuthenticated) {
       navigate("/login");
@@ -62,11 +100,12 @@ const GameLobby: React.FC = () => {
     }
 
     fetchGameData();
+    fetchRoles();
 
     // Polling interval for game updates
-    // const interval = setInterval(fetchGameData, 5000);
-    // return () => clearInterval(interval);
-  }, [gameId, isAuthenticated, navigate, user?.username]);
+    const interval = setInterval(fetchGameData, 5000);
+    return () => clearInterval(interval);
+  }, [gameId, isAuthenticated, navigate, user?.user_id]);
 
   const startCountdown = () => {
     console.log("starting countdown");
@@ -182,12 +221,10 @@ const GameLobby: React.FC = () => {
               ← Back to Games
             </Link>
             <h1 className="mb-2 text-3xl font-bold text-white pixel-text">
-              Game Lobby:{" "}
-              {game.game_name || "Game #" + game.session_id.slice(0, 8)}
+              Game Lobby: {"Game #" + game.game_id.slice(0, 8)}
             </h1>
             <p className="text-lg text-gray-400">
-              Host:{" "}
-              <span className="text-purple-400">{game.host_username}</span>
+              Host: <span className="text-purple-400">{hostUsername}</span>
             </p>
           </div>
 
@@ -292,7 +329,7 @@ const GameLobby: React.FC = () => {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 {players.map((player) => (
                   <div
-                    key={player.player_id}
+                    key={player.id}
                     className={`p-3 rounded-lg flex items-center ${
                       player.user_id === user?.user_id
                         ? "bg-purple-900/30 border border-purple-500"
@@ -300,7 +337,7 @@ const GameLobby: React.FC = () => {
                     }`}
                   >
                     <div className="flex items-center justify-center w-10 h-10 font-bold bg-purple-800 rounded-full">
-                      {player.username.charAt(0).toUpperCase()}
+                      {player.username?.charAt(0).toUpperCase() || "?"}
                     </div>
                     <div className="ml-3">
                       <div className="font-bold">
@@ -312,7 +349,7 @@ const GameLobby: React.FC = () => {
                         )}
                       </div>
                       <div className="text-sm text-gray-400">
-                        Joined {new Date(player.join_time).toLocaleTimeString()}
+                        Joined {new Date(player.played_at).toLocaleTimeString()}
                       </div>
                     </div>
                     {isHost && player.user_id !== user?.user_id && (
@@ -407,7 +444,7 @@ const GameLobby: React.FC = () => {
                             key={roleId}
                             className="px-2 py-1 text-xs bg-gray-700 rounded-full"
                           >
-                            {role ? role.name : "Unknown Role"}
+                            {role ? role.role_name : "Unknown Role"}
                           </div>
                         );
                       })

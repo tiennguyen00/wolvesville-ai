@@ -1,9 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import gameService from "../services/gameService";
+import gameService, {
+  Role,
+  GameStatusType,
+  GamePhaseType,
+} from "../services/gameService";
 
-// Dummy role icons
+// Role icons
 const roleIcons: Record<string, string> = {
   Villager: "🧑",
   Werewolf: "🐺",
@@ -22,10 +26,9 @@ const CreateGame: React.FC = () => {
   const navigate = useNavigate();
 
   const [formData, setFormData] = useState({
-    game_name: "",
     game_mode: "classic",
     max_players: 12,
-    password: "",
+    game_password: "",
     day_duration: 120,
     night_duration: 60,
     discussion_duration: 60,
@@ -49,7 +52,7 @@ const CreateGame: React.FC = () => {
         // Set default roles
         const defaultRoles = roles
           .filter((role) =>
-            ["Villager", "Werewolf", "Seer"].includes(role.name)
+            ["Villager", "Werewolf", "Seer"].includes(role.role_name)
           )
           .map((role) => role.role_id);
         setSelectedRoles(defaultRoles);
@@ -80,11 +83,13 @@ const CreateGame: React.FC = () => {
     setIsSubmitting(true);
     try {
       const gameData = {
-        game_name: formData.game_name || `${user?.username}'s Game`,
         game_mode: formData.game_mode,
+        host_id: user?.user_id,
+        status: "lobby" as GameStatusType,
+        current_phase: "lobby" as GamePhaseType,
         max_players: formData.max_players,
-        password: formData.password || null,
-        password_protected: !!formData.password,
+        game_password: formData.game_password || undefined,
+        password_protected: !!formData.game_password,
         settings: {
           roles: selectedRoles,
           day_duration: formData.day_duration,
@@ -96,7 +101,7 @@ const CreateGame: React.FC = () => {
 
       const newGame = await gameService.createGame(gameData);
       console.log(newGame);
-      navigate(`/game/lobby/${newGame.session_id}`);
+      navigate(`/game/lobby/${newGame.game_id}`);
     } catch (err) {
       console.error("Error creating game:", err);
       setError("Failed to create game. Please try again.");
@@ -169,21 +174,6 @@ const CreateGame: React.FC = () => {
               </h2>
 
               <div className="mb-4">
-                <label htmlFor="game_name" className="form-label pixel-text">
-                  Game Name
-                </label>
-                <input
-                  type="text"
-                  id="game_name"
-                  name="game_name"
-                  value={formData.game_name}
-                  onChange={handleChange}
-                  className="input-field"
-                  placeholder={`${user?.username}'s Game`}
-                />
-              </div>
-
-              <div className="mb-4">
                 <label htmlFor="game_mode" className="form-label pixel-text">
                   Game Mode
                 </label>
@@ -217,14 +207,17 @@ const CreateGame: React.FC = () => {
               </div>
 
               <div className="mb-4">
-                <label htmlFor="password" className="form-label pixel-text">
+                <label
+                  htmlFor="game_password"
+                  className="form-label pixel-text"
+                >
                   Password (Optional)
                 </label>
                 <input
                   type="password"
-                  id="password"
-                  name="password"
-                  value={formData.password}
+                  id="game_password"
+                  name="game_password"
+                  value={formData.game_password}
                   onChange={handleChange}
                   className="input-field"
                   placeholder="Leave empty for public game"
@@ -351,18 +344,18 @@ const CreateGame: React.FC = () => {
                 >
                   <div className="flex items-center mb-2">
                     <div className="flex items-center justify-center w-8 h-8 mr-2 text-2xl">
-                      {roleIcons[role.name] || "🎭"}
+                      {roleIcons[role.role_name] || "🎭"}
                     </div>
-                    <div className="font-bold">{role.name}</div>
+                    <div className="font-bold">{role.role_name}</div>
                   </div>
                   <div className="text-xs text-gray-400">
-                    {role.team === "village" && (
+                    {role.faction === "Village" && (
                       <span className="text-blue-400">Village Team</span>
                     )}
-                    {role.team === "werewolf" && (
+                    {role.faction === "Werewolves" && (
                       <span className="text-red-400">Werewolf Team</span>
                     )}
-                    {role.team === "neutral" && (
+                    {role.faction === "neutral" && (
                       <span className="text-yellow-400">Neutral</span>
                     )}
                   </div>

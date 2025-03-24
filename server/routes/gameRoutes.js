@@ -33,7 +33,15 @@ router.get("/", async (req, res) => {
 // @access  Private
 router.post("/", auth, async (req, res) => {
   try {
-    const { game_mode, max_players, password, settings } = req.body;
+    const {
+      game_mode,
+      max_players,
+      game_password,
+      password_protected,
+      settings,
+      current_phase,
+    } = req.body;
+
     const userId = req.user.id;
 
     // Basic validation
@@ -45,8 +53,10 @@ router.post("/", auth, async (req, res) => {
       userId,
       game_mode,
       max_players,
-      password,
-      settings
+      game_password,
+      password_protected,
+      settings,
+      current_phase || "lobby"
     );
 
     res.status(201).json({
@@ -84,10 +94,10 @@ router.get("/:id", async (req, res) => {
 router.post("/:id/join", auth, async (req, res) => {
   try {
     const { id } = req.params;
-    const { password } = req.body;
+    const { game_password } = req.body;
     const userId = req.user.id;
 
-    const result = await Game.joinGame(id, userId, password);
+    const result = await Game.joinGame(id, userId, game_password);
 
     res.status(201).json({
       message: "Successfully joined the game",
@@ -154,38 +164,21 @@ router.get("/:id/events", auth, async (req, res) => {
 router.post("/:id/events", auth, async (req, res) => {
   try {
     const { id } = req.params;
-    const {
-      event_type,
-      event_data,
-      initiator_id,
-      target_ids,
-      phase,
-      day_number,
-      is_public,
-    } = req.body;
+    const { event_type, event_data } = req.body;
 
     // Basic validation
-    if (!event_type || !phase || !day_number) {
+    if (!event_type) {
       return res.status(400).json({
-        message: "Event type, phase, and day number are required",
+        message: "Event type is required",
       });
     }
 
-    const result = await Game.recordGameEvent(
-      id,
-      event_type,
-      event_data || {},
-      initiator_id,
-      target_ids || [],
-      phase,
-      day_number,
-      is_public
-    );
+    const result = await Game.recordGameEvent(id, event_type, event_data || {});
 
     res.status(201).json({
       message: "Event recorded successfully",
       event_id: result.event_id,
-      timestamp: result.timestamp,
+      created_at: result.created_at,
     });
   } catch (error) {
     console.error("Error recording game event:", error);
@@ -208,7 +201,6 @@ router.post("/:id/start", auth, async (req, res) => {
       status: result.status,
       started_at: result.started_at,
       current_phase: result.current_phase,
-      current_day: result.current_day,
     });
   } catch (error) {
     console.error("Error starting game:", error);
@@ -233,12 +225,12 @@ router.post("/:id/start", auth, async (req, res) => {
 router.post("/:id/actions", auth, async (req, res) => {
   try {
     const { id } = req.params;
-    const { player_id, action_type, target_ids, action_data } = req.body;
+    const { user_id, action_type, target_ids, action_data } = req.body;
 
     // Basic validation
-    if (!player_id || !action_type) {
+    if (!user_id || !action_type) {
       return res.status(400).json({
-        message: "Player ID and action type are required",
+        message: "User ID and action type are required",
       });
     }
 
@@ -256,7 +248,7 @@ router.post("/:id/actions", auth, async (req, res) => {
 
     const result = await Game.recordPlayerAction(
       id,
-      player_id,
+      user_id,
       action_type,
       target_ids || [],
       action_data || {}
@@ -264,7 +256,7 @@ router.post("/:id/actions", auth, async (req, res) => {
 
     res.status(201).json({
       message: result.message,
-      event_id: result.eventId,
+      event_id: result.event_id,
     });
   } catch (error) {
     console.error("Error performing player action:", error);
@@ -293,17 +285,10 @@ router.get("/:id/votes", auth, async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Get the current day from the game
-    const game = await Game.getGameDetails(id);
-
-    if (!game) {
-      return res.status(404).json({ message: "Game not found" });
-    }
-
-    const votes = await Game.getVoteTally(id, game.current_day);
+    // Get votes from the game_votes table
+    const votes = await Game.getVoteTally(id);
 
     res.json({
-      day: game.current_day,
       votes,
     });
   } catch (error) {
@@ -318,9 +303,9 @@ router.get("/:id/votes", auth, async (req, res) => {
 router.get("/:id/chat", auth, async (req, res) => {
   try {
     const { id } = req.params;
-    const { message_type, since } = req.query;
+    const { chat_type, since } = req.query;
 
-    const messages = await Chat.getMessages(id, message_type, since);
+    const messages = await Chat.getMessages(id, chat_type, since);
 
     res.json({
       messages,
@@ -337,42 +322,33 @@ router.get("/:id/chat", auth, async (req, res) => {
 router.post("/:id/chat", auth, async (req, res) => {
   try {
     const { id } = req.params;
-    const { player_id, content, message_type, recipient_id } = req.body;
+    const { user_id, message, chat_type } = req.body;
 
     // Basic validation
-    if (!player_id || !content) {
+    if (!user_id || !message) {
       return res.status(400).json({
-        message: "Player ID and content are required",
+        message: "User ID and message content are required",
       });
     }
 
     const result = await Chat.sendMessage(
       id,
-      player_id,
-      content,
-      message_type || "public",
-      recipient_id
+      user_id,
+      message,
+      chat_type || "public"
     );
 
     res.status(201).json({
       message: "Message sent successfully",
       message_id: result.message_id,
-      timestamp: result.timestamp,
+      sent_at: result.sent_at,
     });
   } catch (error) {
     console.error("Error sending chat message:", error);
 
     // Handle specific errors
-    if (
-      error.message === "Sender not found in this game" ||
-      error.message === "Recipient not found in this game"
-    ) {
+    if (error.message === "User not found in this game") {
       return res.status(404).json({ message: error.message });
-    } else if (
-      error.message === "Private messages require a recipient" ||
-      error.message === "Player doesn't have a team assigned yet"
-    ) {
-      return res.status(400).json({ message: error.message });
     }
 
     res.status(500).json({ message: "Server error", error: error.message });
@@ -486,6 +462,44 @@ router.post("/:id/kick", auth, async (req, res) => {
       error.message === "Players can only be kicked while in the lobby"
     ) {
       return res.status(403).json({ message: error.message });
+    }
+
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+// @route   POST /api/games/:id/leave
+// @desc    Leave a game
+// @access  Private
+router.post("/:id/leave", auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    // Call the Game model to leave the game
+    // We'll use the kickPlayer method but with the player kicking themselves
+    const result = await Game.leaveGame(id, userId);
+
+    res.json({
+      message: "Successfully left the game",
+      game_id: id,
+    });
+  } catch (error) {
+    console.error("Error leaving game:", error);
+
+    // Handle specific errors
+    if (
+      error.message === "Game not found" ||
+      error.message === "Player not found in this game"
+    ) {
+      return res.status(404).json({ message: error.message });
+    } else if (error.message === "Cannot leave a game that is in progress") {
+      return res.status(400).json({ message: error.message });
+    } else if (error.message === "Host cannot leave the game") {
+      return res.status(403).json({
+        message:
+          "As the host, you cannot leave the game. Transfer host or end the game instead.",
+      });
     }
 
     res.status(500).json({ message: "Server error", error: error.message });

@@ -8,33 +8,33 @@ class Game {
     try {
       let query = `
         SELECT 
-          gs.session_id,
-          gs.game_mode,
-          gs.status,
-          gs.max_players,
-          COUNT(gp.player_id) as current_players,
+          g.game_id,
+          g.game_mode,
+          g.status,
+          g.max_players,
+          COUNT(pg.id) as current_players,
           u.username as host_username,
-          gs.created_at,
-          gs.password_protected
+          g.created_at,
+          g.password_protected
         FROM 
-          game_sessions gs
+          games g
         LEFT JOIN 
-          game_players gp ON gs.session_id = gp.session_id
+          player_games pg ON g.game_id = pg.game_id
         LEFT JOIN 
-          users u ON gs.host_user_id = u.user_id
+          users u ON g.host_id = u.user_id
       `;
 
       const params = [];
       if (status) {
-        query += ` WHERE gs.status = $1`;
+        query += ` WHERE g.status = $1`;
         params.push(status);
       }
 
       query += `
         GROUP BY 
-          gs.session_id, u.username
+          g.game_id, u.username
         ORDER BY 
-          gs.created_at DESC
+          g.created_at DESC
       `;
 
       const { rows } = await pool.query(query, params);
@@ -50,8 +50,10 @@ class Game {
     hostUserId,
     gameMode,
     maxPlayers,
-    password = null,
-    settings = {}
+    gamePassword = null,
+    passwordProtected = false,
+    settings = {},
+    currentPhase = "lobby"
   ) {
     const client = await pool.connect();
     try {
@@ -71,32 +73,35 @@ class Game {
 
       // Create password hash if password is provided
       let passwordHash = null;
-      let passwordProtected = false;
-      if (password) {
-        passwordHash = await bcrypt.hash(password, 10);
+      if (gamePassword) {
+        passwordHash = gamePassword; // Store raw password as per the db schema
         passwordProtected = true;
       }
 
-      // Insert new game session
+      // Insert new game
       const gameQuery = `
-        INSERT INTO game_sessions (
-          host_user_id, 
+        INSERT INTO games (
+          host_id, 
           game_mode, 
+          status,
+          current_phase,
           max_players, 
           password_protected, 
-          password_hash,
+          game_password,
           settings
         )
-        VALUES ($1, $2, $3, $4, $5, $6)
-        RETURNING session_id, created_at, status
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        RETURNING game_id, created_at, status
       `;
       const gameValues = [
         hostUserId,
         gameMode || "classic",
+        "lobby",
+        currentPhase,
         maxPlayers || 12,
         passwordProtected,
         passwordHash,
-        JSON.stringify(settings),
+        settings ? JSON.stringify(settings) : null,
       ];
 
       const gameResult = await client.query(gameQuery, gameValues);
@@ -104,11 +109,11 @@ class Game {
 
       // Add host as first player
       const playerQuery = `
-        INSERT INTO game_players (session_id, user_id, position)
-        VALUES ($1, $2, 0)
-        RETURNING player_id
+        INSERT INTO player_games (game_id, user_id, is_alive)
+        VALUES ($1, $2, $3)
+        RETURNING id
       `;
-      const playerValues = [game.session_id, hostUserId];
+      const playerValues = [game.game_id, hostUserId, true];
       await client.query(playerQuery, playerValues);
 
       await client.query("COMMIT");
@@ -123,31 +128,32 @@ class Game {
   }
 
   // Get details of a specific game
-  static async getGameDetails(sessionId) {
+  static async getGameDetails(gameId) {
     try {
-      // Get game session details
+      // Get game details
       const gameQuery = `
         SELECT 
-          gs.session_id,
-          gs.game_mode,
-          gs.status,
-          gs.current_phase,
-          gs.current_day,
-          gs.max_players,
+          g.game_id,
+          g.game_mode,
+          g.status,
+          g.current_phase,
+          g.max_players,
           u.username as host_username,
-          gs.created_at,
-          gs.started_at,
-          gs.ended_at,
-          gs.password_protected,
-          gs.settings
+          u.user_id as host_id,
+          g.created_at,
+          g.started_at,
+          g.ended_at,
+          g.password_protected,
+          g.winner_faction,
+          g.settings
         FROM 
-          game_sessions gs
+          games g
         LEFT JOIN 
-          users u ON gs.host_user_id = u.user_id
+          users u ON g.host_id = u.user_id
         WHERE 
-          gs.session_id = $1
+          g.game_id = $1
       `;
-      const gameResult = await pool.query(gameQuery, [sessionId]);
+      const gameResult = await pool.query(gameQuery, [gameId]);
 
       if (gameResult.rows.length === 0) {
         return null;
@@ -158,27 +164,28 @@ class Game {
       // Get players in this game
       const playersQuery = `
         SELECT 
-          gp.player_id,
-          gp.user_id,
+          pg.id,
+          pg.user_id,
           u.username,
-          gp.position,
-          gp.join_time,
-          gp.is_alive,
-          gp.team,
-          gp.role_id,
-          r.name as role_name
+          pg.is_alive,
+          pg.result,
+          pg.eliminations,
+          pg.xp_earned,
+          pg.coins_earned,
+          pg.played_at,
+          pg.role_id,
+          r.role_name,
+          r.faction
         FROM 
-          game_players gp
+          player_games pg
         JOIN 
-          users u ON gp.user_id = u.user_id
+          users u ON pg.user_id = u.user_id
         LEFT JOIN 
-          roles r ON gp.role_id = r.role_id
+          roles r ON pg.role_id = r.role_id
         WHERE 
-          gp.session_id = $1
-        ORDER BY 
-          gp.position ASC
+          pg.game_id = $1
       `;
-      const playersResult = await pool.query(playersQuery, [sessionId]);
+      const playersResult = await pool.query(playersQuery, [gameId]);
 
       return {
         ...game,
@@ -191,7 +198,7 @@ class Game {
   }
 
   // Join a game
-  static async joinGame(sessionId, userId, password = null) {
+  static async joinGame(gameId, userId, gamePassword = null) {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -199,17 +206,17 @@ class Game {
       // Check if game exists and is in lobby state
       const gameQuery = `
         SELECT 
-          session_id, 
+          game_id, 
           status, 
           max_players, 
           password_protected, 
-          password_hash
+          game_password
         FROM 
-          game_sessions
+          games
         WHERE 
-          session_id = $1
+          game_id = $1
       `;
-      const gameResult = await client.query(gameQuery, [sessionId]);
+      const gameResult = await client.query(gameQuery, [gameId]);
 
       if (gameResult.rows.length === 0) {
         throw new Error("Game not found");
@@ -223,74 +230,61 @@ class Game {
 
       // Check password if required
       if (game.password_protected) {
-        if (!password) {
+        if (!gamePassword) {
           throw new Error("Password is required to join this game");
         }
 
-        const passwordValid = await bcrypt.compare(
-          password,
-          game.password_hash
-        );
-        if (!passwordValid) {
+        if (gamePassword !== game.game_password) {
           throw new Error("Invalid password");
         }
       }
 
       // Check if player is already in the game
       const playerCheckQuery = `
-        SELECT player_id FROM game_players
-        WHERE session_id = $1 AND user_id = $2
+        SELECT id FROM player_games
+        WHERE game_id = $1 AND user_id = $2
       `;
       const playerCheckResult = await client.query(playerCheckQuery, [
-        sessionId,
+        gameId,
         userId,
       ]);
 
       if (playerCheckResult.rows.length > 0) {
-        // Player already in game, return existing player_id
+        // Player already in game, return existing id
         await client.query("COMMIT");
         return {
-          player_id: playerCheckResult.rows[0].player_id,
-          game_id: sessionId,
+          player_id: playerCheckResult.rows[0].id,
+          game_id: gameId,
         };
       }
 
       // Check if game is full
       const countQuery = `
-        SELECT COUNT(*) as player_count FROM game_players
-        WHERE session_id = $1
+        SELECT COUNT(*) as player_count FROM player_games
+        WHERE game_id = $1
       `;
-      const countResult = await client.query(countQuery, [sessionId]);
+      const countResult = await client.query(countQuery, [gameId]);
 
       if (parseInt(countResult.rows[0].player_count) >= game.max_players) {
         throw new Error("Game is full");
       }
 
-      // Get next available position
-      const positionQuery = `
-        SELECT COALESCE(MAX(position) + 1, 0) as next_position
-        FROM game_players
-        WHERE session_id = $1
-      `;
-      const positionResult = await client.query(positionQuery, [sessionId]);
-      const position = positionResult.rows[0].next_position;
-
       // Add player to game
       const playerInsertQuery = `
-        INSERT INTO game_players (session_id, user_id, position)
+        INSERT INTO player_games (game_id, user_id, is_alive)
         VALUES ($1, $2, $3)
-        RETURNING player_id
+        RETURNING id
       `;
       const playerInsertResult = await client.query(playerInsertQuery, [
-        sessionId,
+        gameId,
         userId,
-        position,
+        true,
       ]);
 
       await client.query("COMMIT");
       return {
-        player_id: playerInsertResult.rows[0].player_id,
-        game_id: sessionId,
+        player_id: playerInsertResult.rows[0].id,
+        game_id: gameId,
       };
     } catch (error) {
       await client.query("ROLLBACK");
@@ -307,20 +301,16 @@ class Game {
       const query = `
         SELECT 
           role_id, 
-          name, 
+          role_name, 
+          faction, 
           description, 
-          team, 
-          category, 
-          ability_type, 
-          ability_target, 
-          icon_url, 
-          enabled
+          ability_description, 
+          icon, 
+          created_at
         FROM 
           roles
-        WHERE 
-          enabled = true
         ORDER BY 
-          name ASC
+          role_name ASC
       `;
 
       const { rows } = await pool.query(query);
@@ -332,33 +322,29 @@ class Game {
   }
 
   // Get game events
-  static async getGameEvents(sessionId, since = null) {
+  static async getGameEvents(gameId, since = null) {
     try {
       let query = `
         SELECT 
           event_id,
+          game_id,
           event_type,
           event_data,
-          initiator_id,
-          target_ids,
-          phase,
-          day_number,
-          timestamp,
-          is_public
+          created_at
         FROM 
           game_events
         WHERE 
-          session_id = $1
+          game_id = $1
       `;
 
-      const params = [sessionId];
+      const params = [gameId];
 
       if (since) {
-        query += ` AND timestamp > $2`;
+        query += ` AND created_at > $2`;
         params.push(since);
       }
 
-      query += ` ORDER BY timestamp ASC`;
+      query += ` ORDER BY created_at ASC`;
 
       const { rows } = await pool.query(query, params);
       return rows;
@@ -369,41 +355,22 @@ class Game {
   }
 
   // Record a game event
-  static async recordGameEvent(
-    sessionId,
-    eventType,
-    eventData,
-    initiatorId = null,
-    targetIds = [],
-    phase,
-    dayNumber,
-    isPublic = true
-  ) {
+  static async recordGameEvent(gameId, eventType, eventData) {
     try {
       const query = `
         INSERT INTO game_events (
-          session_id,
+          game_id,
           event_type,
-          event_data,
-          initiator_id,
-          target_ids,
-          phase,
-          day_number,
-          is_public
+          event_data
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        RETURNING event_id, timestamp
+        VALUES ($1, $2, $3)
+        RETURNING event_id, created_at
       `;
 
       const values = [
-        sessionId,
+        gameId,
         eventType,
-        JSON.stringify(eventData),
-        initiatorId,
-        targetIds,
-        phase,
-        dayNumber,
-        isPublic,
+        eventData ? JSON.stringify(eventData) : "{}",
       ];
 
       const { rows } = await pool.query(query, values);
@@ -415,32 +382,32 @@ class Game {
   }
 
   // Start a game
-  static async startGame(sessionId, hostUserId) {
+  static async startGame(gameId, hostUserId) {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
 
       // Verify user is host
       const hostQuery = `
-        SELECT host_user_id FROM game_sessions
-        WHERE session_id = $1
+        SELECT host_id FROM games
+        WHERE game_id = $1
       `;
-      const hostResult = await client.query(hostQuery, [sessionId]);
+      const hostResult = await client.query(hostQuery, [gameId]);
 
       if (hostResult.rows.length === 0) {
         throw new Error("Game not found");
       }
 
-      if (hostResult.rows[0].host_user_id !== hostUserId) {
+      if (hostResult.rows[0].host_id !== hostUserId) {
         throw new Error("Only the host can start the game");
       }
 
       // Count players
       const countQuery = `
-        SELECT COUNT(*) as player_count FROM game_players
-        WHERE session_id = $1
+        SELECT COUNT(*) as player_count FROM player_games
+        WHERE game_id = $1
       `;
-      const countResult = await client.query(countQuery, [sessionId]);
+      const countResult = await client.query(countQuery, [gameId]);
       const playerCount = parseInt(countResult.rows[0].player_count);
 
       if (playerCount < 3) {
@@ -449,84 +416,53 @@ class Game {
 
       // Update game status
       const updateQuery = `
-        UPDATE game_sessions
+        UPDATE games
         SET 
           status = 'in_progress',
           started_at = NOW(),
-          current_phase = 'night',
-          current_day = 1
-        WHERE session_id = $1
-        RETURNING status, started_at, current_phase, current_day
+          current_phase = 'night'
+        WHERE game_id = $1
+        RETURNING status, started_at, current_phase
       `;
-      const updateResult = await client.query(updateQuery, [sessionId]);
+      const updateResult = await client.query(updateQuery, [gameId]);
 
-      // Assign roles (simplified for now - assign werewolves to ~1/3 of players)
-      // Get all available roles
-      const rolesQuery = `
-        SELECT role_id, name, team FROM roles WHERE enabled = true
-      `;
-      const rolesResult = await client.query(rolesQuery);
-      const roles = rolesResult.rows;
+      // Get all available roles from the settings
+      const gameQuery = `SELECT settings FROM games WHERE game_id = $1`;
+      const gameResult = await client.query(gameQuery, [gameId]);
+      const settings = gameResult.rows[0].settings || {};
 
-      // Get werewolf and villager roles
-      const werewolfRole = roles.find((r) => r.name === "Werewolf");
-      const villagerRole = roles.find((r) => r.name === "Villager");
-      const seerRole = roles.find((r) => r.name === "Seer");
-
-      if (!werewolfRole || !villagerRole) {
-        throw new Error("Required roles not found in the database");
+      let roleIds = [];
+      if (settings.roles && Array.isArray(settings.roles)) {
+        roleIds = settings.roles;
+      } else {
+        // Fallback - get default roles
+        const rolesQuery = `SELECT role_id FROM roles LIMIT 3`;
+        const rolesResult = await client.query(rolesQuery);
+        roleIds = rolesResult.rows.map((r) => r.role_id);
       }
 
       // Get all players
       const playersQuery = `
-        SELECT player_id FROM game_players
-        WHERE session_id = $1
+        SELECT id FROM player_games
+        WHERE game_id = $1
         ORDER BY RANDOM()
       `;
-      const playersResult = await client.query(playersQuery, [sessionId]);
-      const players = playersResult.rows.map((p) => p.player_id);
+      const playersResult = await client.query(playersQuery, [gameId]);
+      const players = playersResult.rows.map((p) => p.id);
 
-      // Assign werewolves (approximately 1/3 of players)
-      const werewolfCount = Math.max(1, Math.floor(players.length / 3));
-      const werewolves = players.slice(0, werewolfCount);
+      // Assign roles to players
+      for (let i = 0; i < players.length; i++) {
+        // Cycle through roles if there are more players than roles
+        const roleIndex = i % roleIds.length;
+        const roleId = roleIds[roleIndex];
 
-      // Assign one seer
-      const seerPlayer = players[werewolfCount];
-
-      // Assign villagers to the rest
-      const villagers = players.slice(werewolfCount + 1);
-
-      // Update player roles
-      for (const playerId of werewolves) {
         await client.query(
           `
-          UPDATE game_players
-          SET role_id = $1, team = $2
-          WHERE player_id = $3
+          UPDATE player_games
+          SET role_id = $1
+          WHERE id = $2
         `,
-          [werewolfRole.role_id, werewolfRole.team, playerId]
-        );
-      }
-
-      if (seerRole && seerPlayer) {
-        await client.query(
-          `
-          UPDATE game_players
-          SET role_id = $1, team = $2
-          WHERE player_id = $3
-        `,
-          [seerRole.role_id, seerRole.team, seerPlayer]
-        );
-      }
-
-      for (const playerId of villagers) {
-        await client.query(
-          `
-          UPDATE game_players
-          SET role_id = $1, team = $2
-          WHERE player_id = $3
-        `,
-          [villagerRole.role_id, villagerRole.team, playerId]
+          [roleId, players[i]]
         );
       }
 
@@ -534,23 +470,13 @@ class Game {
       await client.query(
         `
         INSERT INTO game_events (
-          session_id,
+          game_id,
           event_type,
-          event_data,
-          phase,
-          day_number,
-          is_public
+          event_data
         )
-        VALUES ($1, $2, $3, $4, $5, $6)
+        VALUES ($1, $2, $3)
       `,
-        [
-          sessionId,
-          "game_started",
-          JSON.stringify({ player_count: playerCount }),
-          "night",
-          1,
-          true,
-        ]
+        [gameId, "game_started", JSON.stringify({ player_count: playerCount })]
       );
 
       await client.query("COMMIT");
@@ -566,8 +492,8 @@ class Game {
 
   // Record a player action
   static async recordPlayerAction(
-    sessionId,
-    playerId,
+    gameId,
+    userId,
     actionType,
     targetIds,
     actionData = {}
@@ -576,28 +502,28 @@ class Game {
     try {
       await client.query("BEGIN");
 
-      // Get game state and player role
+      // Get game state and player
       const gameStateQuery = `
         SELECT 
-          gs.current_phase,
-          gs.current_day,
-          gp.role_id,
-          gp.is_alive,
-          r.name as role_name,
-          r.ability_type
+          g.current_phase,
+          pg.id,
+          pg.is_alive,
+          pg.role_id,
+          r.role_name,
+          r.ability_description
         FROM 
-          game_sessions gs
+          games g
         JOIN 
-          game_players gp ON gs.session_id = gp.session_id
-        JOIN 
-          roles r ON gp.role_id = r.role_id
+          player_games pg ON g.game_id = pg.game_id
+        LEFT JOIN 
+          roles r ON pg.role_id = r.role_id
         WHERE 
-          gs.session_id = $1 
-          AND gp.player_id = $2
+          g.game_id = $1 
+          AND pg.user_id = $2
       `;
       const gameStateResult = await client.query(gameStateQuery, [
-        sessionId,
-        playerId,
+        gameId,
+        userId,
       ]);
 
       if (gameStateResult.rows.length === 0) {
@@ -605,23 +531,14 @@ class Game {
       }
 
       const gameState = gameStateResult.rows[0];
+      const playerId = gameState.id;
 
       // Check if player is alive
       if (!gameState.is_alive) {
         throw new Error("Dead players cannot perform actions");
       }
 
-      // Validate action type against role ability
-      if (actionType === "kill" && gameState.ability_type !== "kill") {
-        throw new Error("This role cannot perform kill actions");
-      } else if (
-        actionType === "investigate" &&
-        gameState.ability_type !== "investigate"
-      ) {
-        throw new Error("This role cannot perform investigate actions");
-      }
-
-      // Validate phase for action
+      // Validate action type and phase (simplified validation)
       if (actionType === "kill" && gameState.current_phase !== "night") {
         throw new Error("Kill actions can only be performed at night");
       } else if (actionType === "vote" && gameState.current_phase !== "day") {
@@ -631,52 +548,46 @@ class Game {
       // Record action as event
       const eventQuery = `
         INSERT INTO game_events (
-          session_id,
+          game_id,
           event_type,
-          event_data,
-          initiator_id,
-          target_ids,
-          phase,
-          day_number,
-          is_public
+          event_data
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        VALUES ($1, $2, $3)
         RETURNING event_id
       `;
 
       const eventValues = [
-        sessionId,
+        gameId,
         `player_${actionType}`,
-        JSON.stringify(actionData),
-        playerId,
-        targetIds,
-        gameState.current_phase,
-        gameState.current_day,
-        false, // Most player actions are private
+        JSON.stringify({
+          ...actionData,
+          player_id: playerId,
+          target_ids: targetIds,
+        }),
       ];
 
       const eventResult = await client.query(eventQuery, eventValues);
 
-      // If this is a vote, record in votes table
+      // If this is a vote, record in game_votes table
       if (actionType === "vote") {
         const targetId = targetIds[0]; // Assuming single target for votes
 
         // Check if player already voted
         const voteCheckQuery = `
-          SELECT vote_id FROM votes
-          WHERE session_id = $1 AND voter_id = $2 AND day_number = $3
+          SELECT vote_id FROM game_votes
+          WHERE game_id = $1 AND voter_id = $2 AND phase_number = 
+            (SELECT COALESCE(MAX(phase_number), 1) FROM game_votes WHERE game_id = $1)
         `;
         const voteCheckResult = await client.query(voteCheckQuery, [
-          sessionId,
-          playerId,
-          gameState.current_day,
+          gameId,
+          userId,
         ]);
 
         if (voteCheckResult.rows.length > 0) {
           // Update existing vote
           const updateVoteQuery = `
-            UPDATE votes
-            SET target_id = $1, timestamp = NOW(), changed_count = changed_count + 1
+            UPDATE game_votes
+            SET target_id = $1, created_at = NOW()
             WHERE vote_id = $2
             RETURNING vote_id
           `;
@@ -686,24 +597,32 @@ class Game {
           ]);
         } else {
           // Insert new vote
+          const phaseQuery = `
+            SELECT COALESCE(MAX(phase_number), 0) + 1 as next_phase 
+            FROM game_votes 
+            WHERE game_id = $1
+          `;
+          const phaseResult = await client.query(phaseQuery, [gameId]);
+          const phaseNumber = phaseResult.rows[0].next_phase;
+
           const insertVoteQuery = `
-            INSERT INTO votes (session_id, day_number, voter_id, target_id, vote_type)
+            INSERT INTO game_votes (game_id, voter_id, target_id, vote_type, phase_number)
             VALUES ($1, $2, $3, $4, $5)
             RETURNING vote_id
           `;
           await client.query(insertVoteQuery, [
-            sessionId,
-            gameState.current_day,
-            playerId,
+            gameId,
+            userId,
             targetId,
-            "lynch", // Default vote type
+            "day_vote", // Default vote type
+            phaseNumber,
           ]);
         }
       }
 
       await client.query("COMMIT");
       return {
-        eventId: eventResult.rows[0].event_id,
+        event_id: eventResult.rows[0].event_id,
         message: `${actionType} action recorded successfully`,
       };
     } catch (error) {
@@ -716,32 +635,29 @@ class Game {
   }
 
   // Get the current vote tally
-  static async getVoteTally(sessionId, dayNumber) {
+  static async getVoteTally(gameId) {
     try {
       const query = `
         SELECT 
-          v.target_id,
-          COUNT(v.vote_id) as vote_count,
-          gp.user_id,
+          gv.target_id,
+          COUNT(gv.vote_id) as vote_count,
+          u.user_id,
           u.username,
-          ARRAY_AGG(v.voter_id) as voters
+          gv.phase_number,
+          array_agg(gv.voter_id) as voters
         FROM 
-          votes v
+          game_votes gv
         JOIN 
-          game_players gp ON v.target_id = gp.player_id
-        JOIN 
-          users u ON gp.user_id = u.user_id
+          users u ON gv.target_id = u.user_id
         WHERE 
-          v.session_id = $1 
-          AND v.day_number = $2
-          AND v.target_id IS NOT NULL
+          gv.game_id = $1
         GROUP BY 
-          v.target_id, gp.user_id, u.username
+          gv.target_id, u.user_id, u.username, gv.phase_number
         ORDER BY 
-          vote_count DESC
+          gv.phase_number DESC, vote_count DESC
       `;
 
-      const { rows } = await pool.query(query, [sessionId, dayNumber]);
+      const { rows } = await pool.query(query, [gameId]);
       return rows;
     } catch (error) {
       console.error("Error getting vote tally:", error);
@@ -749,24 +665,18 @@ class Game {
     }
   }
 
-  // Kick a player from a game
-  static async kickPlayer(sessionId, hostUserId, targetUserId) {
+  // Kick a player from game (host only)
+  static async kickPlayer(gameId, hostUserId, targetUserId) {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
 
-      // Verify game exists and is in lobby state
+      // Verify game exists and user is host
       const gameQuery = `
-        SELECT 
-          session_id, 
-          host_user_id,
-          status
-        FROM 
-          game_sessions
-        WHERE 
-          session_id = $1
+        SELECT status, host_id FROM games
+        WHERE game_id = $1
       `;
-      const gameResult = await client.query(gameQuery, [sessionId]);
+      const gameResult = await client.query(gameQuery, [gameId]);
 
       if (gameResult.rows.length === 0) {
         throw new Error("Game not found");
@@ -774,24 +684,23 @@ class Game {
 
       const game = gameResult.rows[0];
 
-      // Verify user is the host
-      if (game.host_user_id !== hostUserId) {
+      // Check if user is host
+      if (game.host_id !== hostUserId) {
         throw new Error("Only the host can kick players");
       }
 
-      // Verify game is in lobby state
+      // Check if game is in lobby
       if (game.status !== "lobby") {
         throw new Error("Players can only be kicked while in the lobby");
       }
 
-      // Verify target player exists in the game
+      // Find target player
       const playerQuery = `
-        SELECT player_id 
-        FROM game_players
-        WHERE session_id = $1 AND user_id = $2
+        SELECT id FROM player_games
+        WHERE game_id = $1 AND user_id = $2
       `;
       const playerResult = await client.query(playerQuery, [
-        sessionId,
+        gameId,
         targetUserId,
       ]);
 
@@ -799,52 +708,116 @@ class Game {
         throw new Error("Target player not found in this game");
       }
 
-      const playerId = playerResult.rows[0].player_id;
-      console.log("playerId", playerId);
+      const playerId = playerResult.rows[0].id;
 
-      // Delete the player from the game
+      // Delete player from game
       const deleteQuery = `
-        DELETE FROM game_players
-        WHERE player_id = $1
-        RETURNING player_id
+        DELETE FROM player_games
+        WHERE id = $1
+        RETURNING id
       `;
-      await client.query(deleteQuery, [playerId]);
+      const deleteResult = await client.query(deleteQuery, [playerId]);
 
-      // Record the kick event in the format that matches the game_events table schema
-      // Based on db-setup.sql, the table has: game_id, event_type, event_data, created_at
-      try {
-        await client.query(
-          `
-          INSERT INTO game_events (
-            game_id,
-            event_type,
-            event_data
-          )
-          VALUES ($1, $2, $3)
-        `,
-          [
-            sessionId, // This assumes game_id is the same as session_id in this context
-            "player_kicked",
-            JSON.stringify({
-              host_id: hostUserId,
-              target_user_id: targetUserId,
-              timestamp: new Date().toISOString(),
-            }),
-          ]
-        );
-      } catch (eventError) {
-        console.warn(
-          "Could not record kick event, but player was kicked",
-          eventError.message
-        );
-        // Don't throw error here - kick was successful even if we can't record the event
-      }
+      // Record kick event
+      await client.query(
+        `
+        INSERT INTO game_events (
+          game_id,
+          event_type,
+          event_data
+        )
+        VALUES ($1, $2, $3)
+      `,
+        [
+          gameId,
+          "player_kicked",
+          JSON.stringify({ player_id: playerId, kicked_by: hostUserId }),
+        ]
+      );
 
       await client.query("COMMIT");
-      return { success: true, player_id: playerId };
+      return { player_id: playerId };
     } catch (error) {
       await client.query("ROLLBACK");
       console.error("Error kicking player:", error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  // Allow a player to leave a game
+  static async leaveGame(gameId, userId) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      // Verify game exists and get status
+      const gameQuery = `
+        SELECT status, host_id FROM games
+        WHERE game_id = $1
+      `;
+      const gameResult = await client.query(gameQuery, [gameId]);
+
+      if (gameResult.rows.length === 0) {
+        throw new Error("Game not found");
+      }
+
+      const game = gameResult.rows[0];
+
+      // Check if user is the host
+      if (game.host_id === userId) {
+        throw new Error("Host cannot leave the game");
+      }
+
+      // Check if game is in lobby
+      if (game.status !== "lobby") {
+        throw new Error("Cannot leave a game that is in progress");
+      }
+
+      // Find player
+      const playerQuery = `
+        SELECT id FROM player_games
+        WHERE game_id = $1 AND user_id = $2
+      `;
+      const playerResult = await client.query(playerQuery, [gameId, userId]);
+
+      if (playerResult.rows.length === 0) {
+        throw new Error("Player not found in this game");
+      }
+
+      const playerId = playerResult.rows[0].id;
+
+      // Delete player from game
+      const deleteQuery = `
+        DELETE FROM player_games
+        WHERE id = $1
+        RETURNING id
+      `;
+      const deleteResult = await client.query(deleteQuery, [playerId]);
+
+      // Record leave event
+      await client.query(
+        `
+        INSERT INTO game_events (
+          game_id,
+          event_type,
+          event_data
+        )
+        VALUES ($1, $2, $3)
+      `,
+        [
+          gameId,
+          "player_left",
+          JSON.stringify({ player_id: playerId, user_id: userId }),
+        ]
+      );
+
+      await client.query("COMMIT");
+      return { player_id: playerId, game_id: gameId };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      console.error("Error leaving game:", error);
       throw error;
     } finally {
       client.release();
