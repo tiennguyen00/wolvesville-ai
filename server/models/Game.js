@@ -823,6 +823,449 @@ class Game {
       client.release();
     }
   }
+
+  // Update game state
+  static async updateGameState(gameId, updates) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      const updateQuery = `
+        UPDATE games
+        SET 
+          current_phase = COALESCE($1, current_phase),
+          day_number = COALESCE($2, day_number),
+          time_remaining = COALESCE($3, time_remaining),
+          status = COALESCE($4, status),
+          winner_faction = COALESCE($5, winner_faction)
+        WHERE game_id = $6
+        RETURNING *
+      `;
+
+      const values = [
+        updates.current_phase,
+        updates.day_number,
+        updates.time_remaining,
+        updates.status,
+        updates.winner_faction,
+        gameId,
+      ];
+
+      const result = await client.query(updateQuery, values);
+      await client.query("COMMIT");
+      return result.rows[0];
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  // Process night phase actions
+  static async processNightActions(gameId) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      // Get all night actions
+      const actionsQuery = `
+        SELECT 
+          e.*,
+          pg.user_id as player_id,
+          pg.role_id,
+          r.role_name,
+          r.faction
+        FROM game_events e
+        JOIN player_games pg ON e.initiator_id = pg.id
+        JOIN roles r ON pg.role_id = r.role_id
+        WHERE e.game_id = $1 
+        AND e.phase = 'night'
+        AND e.day_number = (SELECT current_day FROM games WHERE game_id = $1)
+      `;
+
+      const actions = await client.query(actionsQuery, [gameId]);
+
+      // Process werewolf kills
+      const werewolfKills = actions.rows.filter(
+        (action) => action.role_name === "Werewolf"
+      );
+
+      if (werewolfKills.length > 0) {
+        // Count votes for each target
+        const killVotes = {};
+        werewolfKills.forEach((kill) => {
+          kill.target_ids.forEach((targetId) => {
+            killVotes[targetId] = (killVotes[targetId] || 0) + 1;
+          });
+        });
+
+        // Find most voted target
+        const mostVotedTarget = Object.entries(killVotes).sort(
+          ([, a], [, b]) => b - a
+        )[0];
+
+        if (mostVotedTarget) {
+          const [targetId] = mostVotedTarget;
+
+          // Kill the player
+          await client.query(
+            `UPDATE player_games 
+             SET is_alive = false, death_time = NOW(), death_cause = 'werewolf_kill'
+             WHERE id = $1`,
+            [targetId]
+          );
+
+          // Record the kill event
+          await client.query(
+            `INSERT INTO game_events 
+             (game_id, event_type, event_data, target_ids, phase, day_number, is_public)
+             VALUES ($1, 'player_killed', $2, $3, 'night', $4, true)`,
+            [
+              gameId,
+              JSON.stringify({ cause: "werewolf_kill" }),
+              [targetId],
+              (
+                await client.query(
+                  "SELECT current_day FROM games WHERE game_id = $1",
+                  [gameId]
+                )
+              ).rows[0].current_day,
+            ]
+          );
+        }
+      }
+
+      // Process other night actions (Seer, Doctor, etc.)
+      const otherActions = actions.rows.filter(
+        (action) => action.role_name !== "Werewolf"
+      );
+
+      for (const action of otherActions) {
+        // Process based on role
+        switch (action.role_name) {
+          case "Seer":
+            // Record investigation result
+            await client.query(
+              `INSERT INTO game_events 
+               (game_id, event_type, event_data, target_ids, phase, day_number, is_public)
+               VALUES ($1, 'investigation_result', $2, $3, 'night', $4, false)`,
+              [
+                gameId,
+                JSON.stringify({
+                  investigator_id: action.player_id,
+                  target_id: action.target_ids[0],
+                  result: action.event_data.result,
+                }),
+                action.target_ids,
+                (
+                  await client.query(
+                    "SELECT current_day FROM games WHERE game_id = $1",
+                    [gameId]
+                  )
+                ).rows[0].current_day,
+              ]
+            );
+            break;
+          case "Doctor":
+            // Record protection
+            await client.query(
+              `INSERT INTO game_events 
+               (game_id, event_type, event_data, target_ids, phase, day_number, is_public)
+               VALUES ($1, 'protection_applied', $2, $3, 'night', $4, false)`,
+              [
+                gameId,
+                JSON.stringify({
+                  doctor_id: action.player_id,
+                  protected_id: action.target_ids[0],
+                }),
+                action.target_ids,
+                (
+                  await client.query(
+                    "SELECT current_day FROM games WHERE game_id = $1",
+                    [gameId]
+                  )
+                ).rows[0].current_day,
+              ]
+            );
+            break;
+        }
+      }
+
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  // Process day phase actions
+  static async processDayActions(gameId) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      // Get all votes for the current day
+      const votesQuery = `
+        SELECT 
+          v.*,
+          pg.user_id as voter_id
+        FROM game_votes v
+        JOIN player_games pg ON v.voter_id = pg.id
+        WHERE v.game_id = $1 
+        AND v.phase_number = (SELECT current_day FROM games WHERE game_id = $1)
+      `;
+
+      const votes = await client.query(votesQuery, [gameId]);
+
+      // Count votes for each target
+      const voteCounts = {};
+      votes.rows.forEach((vote) => {
+        voteCounts[vote.target_id] = (voteCounts[vote.target_id] || 0) + 1;
+      });
+
+      // Find most voted player
+      const mostVoted = Object.entries(voteCounts).sort(
+        ([, a], [, b]) => b - a
+      )[0];
+
+      if (mostVoted) {
+        const [targetId] = mostVoted;
+
+        // Eliminate the player
+        await client.query(
+          `UPDATE player_games 
+           SET is_alive = false, death_time = NOW(), death_cause = 'lynch'
+           WHERE id = $1`,
+          [targetId]
+        );
+
+        // Record the lynch event
+        await client.query(
+          `INSERT INTO game_events 
+           (game_id, event_type, event_data, target_ids, phase, day_number, is_public)
+           VALUES ($1, 'player_lynched', $2, $3, 'day', $4, true)`,
+          [
+            gameId,
+            JSON.stringify({
+              vote_count: voteCounts[targetId],
+              voters: votes.rows
+                .filter((v) => v.target_id === targetId)
+                .map((v) => v.voter_id),
+            }),
+            [targetId],
+            (
+              await client.query(
+                "SELECT current_day FROM games WHERE game_id = $1",
+                [gameId]
+              )
+            ).rows[0].current_day,
+          ]
+        );
+      }
+
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  // Check win conditions
+  static async checkWinConditions(gameId) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      // Get alive players by faction
+      const playersQuery = `
+        SELECT 
+          pg.user_id,
+          pg.is_alive,
+          r.faction
+        FROM player_games pg
+        JOIN roles r ON pg.role_id = r.role_id
+        WHERE pg.game_id = $1
+      `;
+
+      const players = await client.query(playersQuery, [gameId]);
+
+      const alivePlayers = players.rows.filter((p) => p.is_alive);
+      const aliveWerewolves = alivePlayers.filter(
+        (p) => p.faction === "werewolf"
+      );
+      const aliveVillagers = alivePlayers.filter(
+        (p) => p.faction === "village"
+      );
+
+      // Check win conditions
+      let winner = null;
+      if (aliveWerewolves.length === 0) {
+        winner = "village";
+      } else if (aliveWerewolves.length >= aliveVillagers.length) {
+        winner = "werewolf";
+      }
+
+      if (winner) {
+        // Update game status
+        await client.query(
+          `UPDATE games 
+           SET status = 'completed', 
+               winner_faction = $1,
+               ended_at = NOW()
+           WHERE game_id = $2`,
+          [winner, gameId]
+        );
+
+        // Record game end event
+        await client.query(
+          `INSERT INTO game_events 
+           (game_id, event_type, event_data, phase, day_number, is_public)
+           VALUES ($1, 'game_ended', $2, 'day', $3, true)`,
+          [
+            gameId,
+            JSON.stringify({
+              winner_faction: winner,
+              alive_players: alivePlayers.map((p) => p.user_id),
+            }),
+            (
+              await client.query(
+                "SELECT current_day FROM games WHERE game_id = $1",
+                [gameId]
+              )
+            ).rows[0].current_day,
+          ]
+        );
+      }
+
+      await client.query("COMMIT");
+      return winner;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Get role actions for the current phase
+   * @param {string} gameId - The game ID
+   * @returns {Promise<Object>} - Object with player IDs as keys and boolean values indicating if they've used their actions
+   */
+  static async getRoleActions(gameId) {
+    try {
+      // Get current game state
+      const { rows: gameState } = await pool.query(
+        `SELECT current_phase, day_number FROM games WHERE game_id = $1`,
+        [gameId]
+      );
+
+      if (gameState.length === 0) {
+        throw new Error("Game not found");
+      }
+
+      const { current_phase, day_number } = gameState[0];
+
+      // Get actions from game_events table
+      const { rows } = await pool.query(
+        `SELECT initiator_id, event_type
+         FROM game_events
+         WHERE game_id = $1
+         AND phase = $2
+         AND day_number = $3
+         AND event_type IN ('player_vote', 'player_ability', 'player_ready')
+         GROUP BY initiator_id, event_type`,
+        [gameId, current_phase, day_number]
+      );
+
+      const actionsByPlayer = {};
+
+      // Get all players in this game
+      const { rows: players } = await pool.query(
+        `SELECT pg.id, pg.user_id 
+         FROM player_games pg
+         WHERE pg.game_id = $1 AND pg.is_alive = true`,
+        [gameId]
+      );
+
+      // Initialize all players as not having used actions yet
+      players.forEach((player) => {
+        actionsByPlayer[player.user_id] = false;
+      });
+
+      // Mark players who have used actions
+      rows.forEach((row) => {
+        const playerId = row.initiator_id;
+        const player = players.find((p) => p.id === playerId);
+        if (player) {
+          actionsByPlayer[player.user_id] = true;
+        }
+      });
+
+      return actionsByPlayer;
+    } catch (error) {
+      console.error("Error getting role actions:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get current votes for the game
+   * @param {string} gameId - The game ID
+   * @returns {Promise<Object>} - Object with target user IDs as keys and arrays of voter IDs as values
+   */
+  static async getCurrentVotes(gameId) {
+    try {
+      // Get the current day and phase
+      const { rows: gameData } = await pool.query(
+        `SELECT day_number, current_phase 
+         FROM games 
+         WHERE game_id = $1`,
+        [gameId]
+      );
+
+      if (gameData.length === 0) {
+        throw new Error("Game not found");
+      }
+
+      const { day_number, current_phase } = gameData[0];
+
+      // Get votes from the current day and phase
+      const { rows } = await pool.query(
+        `SELECT voter_id, target_id 
+         FROM game_votes 
+         WHERE game_id = $1 
+         AND phase_number = $2 
+         AND vote_type = $3`,
+        [
+          gameId,
+          day_number,
+          current_phase === "day" ? "day_vote" : "night_vote",
+        ]
+      );
+
+      // Organize votes by target
+      const votesByTarget = {};
+      rows.forEach((vote) => {
+        if (!vote.target_id) return;
+
+        if (!votesByTarget[vote.target_id]) {
+          votesByTarget[vote.target_id] = [];
+        }
+        votesByTarget[vote.target_id].push(vote.voter_id);
+      });
+
+      return votesByTarget;
+    } catch (error) {
+      console.error("Error getting current votes:", error);
+      throw error;
+    }
+  }
 }
 
 module.exports = Game;

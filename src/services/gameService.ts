@@ -121,6 +121,14 @@ export interface GameState {
   votes: Record<string, string[]>;
   eliminated_players: string[];
   role_actions: Record<string, boolean>;
+  events: GameEvent[];
+  player: {
+    user_id: string;
+    username: string;
+    role: string;
+    team: string;
+    is_alive: boolean;
+  };
 }
 
 export interface ChatMessage {
@@ -185,42 +193,60 @@ const gameService = {
   },
 
   // Get current game state
-  getGameState: async (gameId: string) => {
+  getGameState: async (gameId: string): Promise<GameState> => {
     const response = await api.get(`/api/games/${gameId}/state`);
-    return response.data.state as GameState;
+    return response.data.state;
   },
 
-  // Vote for a player during day phase
-  votePlayer: async (gameId: string, targetPlayerId: string) => {
-    return gameService.performAction(gameId, {
-      target_id: targetPlayerId,
-      action_type: "vote",
+  // Transition to next phase (host only)
+  transitionPhase: async (
+    gameId: string,
+    phase: GamePhaseType
+  ): Promise<GameSession> => {
+    const response = await api.post(`/api/games/${gameId}/phase/transition`, {
+      phase,
+    });
+    return response.data.game;
+  },
+
+  // Record a player action
+  recordAction: async (
+    gameId: string,
+    actionType: string,
+    targetIds: string[] = [],
+    actionData: any = {}
+  ): Promise<void> => {
+    await api.post(`/api/games/${gameId}/actions`, {
+      action_type: actionType,
+      target_ids: targetIds,
+      action_data: actionData,
     });
   },
 
-  // Use role ability (e.g., Seer checking a player, Doctor protecting)
+  // Vote for a player
+  votePlayer: async (gameId: string, targetId: string): Promise<void> => {
+    await gameService.recordAction(gameId, "vote", [targetId]);
+  },
+
+  // Use role ability
   useAbility: async (
     gameId: string,
-    targetPlayerId: string,
+    targetId: string,
     abilityType: string
-  ) => {
-    return gameService.performAction(gameId, {
-      target_id: targetPlayerId,
-      action_type: "ability",
+  ): Promise<void> => {
+    await gameService.recordAction(gameId, "ability", [targetId], {
+      ability_type: abilityType,
     });
   },
 
-  // Skip using ability for the night
-  skipAbility: async (gameId: string) => {
-    return gameService.performAction(gameId, {
-      skip: true,
-      action_type: "ability",
-    });
+  // Skip using ability
+  skipAbility: async (gameId: string): Promise<void> => {
+    await gameService.recordAction(gameId, "ability", [], { skip: true });
   },
 
   // Mark player as ready for next phase
-  readyForNextPhase: async (gameId: string) => {
-    return gameService.performAction(gameId, "ready");
+  readyForNextPhase: async (gameId: string): Promise<void> => {
+    await api.post(`/api/games/${gameId}/ready`);
   },
 
   // Leave ongoing game

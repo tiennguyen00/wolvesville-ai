@@ -506,4 +506,204 @@ router.post("/:id/leave", auth, async (req, res) => {
   }
 });
 
+// @route   POST /api/games/:id/phase/transition
+// @desc    Transition to next game phase
+// @access  Private
+router.post("/:id/phase/transition", auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { phase } = req.body;
+
+    // Verify user is host
+    const game = await Game.getGameDetails(id);
+    if (!game) {
+      return res.status(404).json({ message: "Game not found" });
+    }
+
+    if (game.host_id !== req.user.id) {
+      return res
+        .status(403)
+        .json({ message: "Only the host can transition phases" });
+    }
+
+    // Process current phase actions
+    if (game.current_phase === "night") {
+      await Game.processNightActions(id);
+    } else if (game.current_phase === "day") {
+      await Game.processDayActions(id);
+    }
+
+    // Update game state
+    const updates = {
+      current_phase: phase,
+      day_number: phase === "day" ? game.day_number + 1 : game.day_number,
+      time_remaining: phase === "night" ? 120 : 180, // 2 minutes for night, 3 for day
+    };
+
+    const updatedGame = await Game.updateGameState(id, updates);
+
+    // Check win conditions
+    const winner = await Game.checkWinConditions(id);
+    if (winner) {
+      return res.json({
+        message: "Game ended",
+        winner_faction: winner,
+        game: updatedGame,
+      });
+    }
+
+    res.json({
+      message: "Phase transition successful",
+      game: updatedGame,
+    });
+  } catch (error) {
+    console.error("Error transitioning phase:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+/**
+ * @route   GET /api/games/:id/state
+ * @desc    Get current game state
+ * @access  Private
+ */
+router.get("/:id/state", auth, async (req, res) => {
+  try {
+    const gameId = req.params.id;
+    const userId = req.user.id;
+
+    // Check if game exists
+    const game = await Game.getGameDetails(gameId);
+    if (!game) {
+      return res.status(404).json({ message: "Game not found" });
+    }
+
+    // Check if user is in game
+    const player = game.players.find((p) => p.user_id === userId);
+    if (!player) {
+      return res.status(403).json({ message: "You are not in this game" });
+    }
+
+    // Get current votes
+    const votes = await Game.getCurrentVotes(gameId);
+
+    // Get current role actions status
+    const roleActions = await Game.getRoleActions(gameId);
+
+    // Get recent events
+    const eventsQuery = `
+      SELECT 
+        event_id,
+        event_type,
+        event_data,
+        created_at,
+        is_public,
+        target_ids
+      FROM game_events
+      WHERE game_id = $1
+      AND (is_public = true OR initiator_id = $2)
+      ORDER BY created_at DESC
+      LIMIT 50
+    `;
+
+    const { rows: events } = await pool.query(eventsQuery, [gameId, player.id]);
+
+    // Filter events based on player role and visibility
+    const visibleEvents = events.filter((event) => {
+      // Public events are visible to all
+      if (event.is_public) return true;
+
+      // Private events are only visible to the initiator or targets
+      if (!event.is_public) {
+        // If player initiated the event
+        if (event.initiator_id === player.id) return true;
+
+        // If player is a target of the event
+        if (event.target_ids && event.target_ids.includes(player.id))
+          return true;
+
+        // Special case for werewolves - they can see other werewolf actions
+        if (
+          player.role_name === "Werewolf" &&
+          event.event_data.faction === "werewolf"
+        )
+          return true;
+      }
+
+      return false;
+    });
+
+    // Build and return game state
+    const gameState = {
+      phase: game.current_phase,
+      day_number: game.day_number || 1,
+      time_remaining:
+        game.time_remaining || (game.current_phase === "night" ? 120 : 180),
+      players: game.players.map((p) => ({
+        id: p.id,
+        user_id: p.user_id,
+        username: p.username,
+        is_alive: p.is_alive,
+        role: p.role_name,
+        is_host: p.user_id === game.host_id,
+      })),
+      // Only include role info for the requesting player or if game is over
+      player: {
+        id: player.id,
+        role: player.role_name,
+        faction: player.faction,
+        is_alive: player.is_alive,
+        ability_used: roleActions[player.user_id] || false,
+      },
+      votes,
+      events: visibleEvents.map((e) => ({
+        id: e.event_id,
+        type: e.event_type,
+        data: e.event_data,
+        time: e.created_at,
+      })),
+      eliminated_players: game.players
+        .filter((p) => !p.is_alive)
+        .map((p) => ({
+          id: p.id,
+          username: p.username,
+          role: game.status === "completed" ? p.role_name : undefined,
+        })),
+    };
+
+    res.json(gameState);
+  } catch (error) {
+    console.error("Error getting game state:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// @route   POST /api/games/:id/ready
+// @desc    Mark player as ready for next phase
+// @access  Private
+router.post("/:id/ready", auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const game = await Game.getGameDetails(id);
+
+    if (!game) {
+      return res.status(404).json({ message: "Game not found" });
+    }
+
+    // Get current player
+    const player = game.players.find((p) => p.user_id === req.user.id);
+    if (!player) {
+      return res.status(404).json({ message: "Player not found in this game" });
+    }
+
+    // Record ready status
+    await Game.recordPlayerAction(id, req.user.id, "ready", [], {});
+
+    res.json({ message: "Ready status recorded" });
+  } catch (error) {
+    console.error("Error recording ready status:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
 module.exports = router;
