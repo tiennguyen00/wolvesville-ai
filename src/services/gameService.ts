@@ -46,15 +46,19 @@ export interface GamePlayer {
   id: string;
   user_id: string;
   game_id: string;
-  role_id?: string; // References roles(role_id)
+  role_id?: string;
+  role_name?: string;
+  role?: string;
+  faction?: string;
+  team?: string;
   is_alive: boolean;
   result?: GameResultType;
   eliminations: number;
   xp_earned: number;
   coins_earned: number;
   played_at: string;
-  username?: string; // Joined from users table
-  avatar?: string; // Joined from users table
+  username?: string;
+  role_description?: string;
 }
 
 export interface GameEvent {
@@ -115,7 +119,6 @@ export interface PlayerAction {
 
 export interface GameState {
   phase: GamePhaseType;
-  day_number: number;
   time_remaining: number;
   current_action: string | null;
   votes: Record<string, string[]>;
@@ -131,6 +134,11 @@ export interface GameState {
   };
 }
 
+export interface SendMessageRequest {
+  message: string;
+  chat_type: ChatTypeEnum;
+}
+
 export interface ChatMessage {
   message_id: string;
   game_id: string;
@@ -138,8 +146,11 @@ export interface ChatMessage {
   message: string;
   chat_type: ChatTypeEnum;
   sent_at: string;
-  username?: string; // Joined from users table
-  avatar?: string; // Joined from users table
+  sender_name?: string;
+  sender_id?: string;
+  sender_team?: string;
+  username?: string;
+  avatar?: string;
 }
 
 // Game service functions
@@ -170,7 +181,9 @@ const gameService = {
 
   // Join a game
   joinGame: async (gameId: string, password?: string) => {
-    const response = await api.post(`/api/games/${gameId}/join`, { password });
+    const response = await api.post(`/api/games/${gameId}/join`, {
+      game_password: password,
+    });
     return response.data;
   },
 

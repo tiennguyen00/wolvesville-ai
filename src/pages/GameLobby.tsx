@@ -3,6 +3,7 @@ import { Link, useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import gameService from "../services/gameService";
 import { GameSession, GamePlayer, Role } from "../services/gameService";
+import { io } from "socket.io-client";
 
 const GameLobby: React.FC = () => {
   const { gameId } = useParams<{ gameId: string }>();
@@ -38,6 +39,75 @@ const GameLobby: React.FC = () => {
 
     return false;
   };
+
+  // Socket connection for game lobby
+  useEffect(() => {
+    if (!gameId || !isAuthenticated) return;
+
+    // Connect to socket with correct namespace
+    const socket = io("http://localhost:5001/game", {
+      auth: {
+        token: localStorage.getItem("token"),
+      },
+      transports: ["polling", "websocket"],
+      forceNew: true,
+    });
+
+    socket.on("create_game", (data) => {
+      console.log("Game created:", data);
+    });
+
+    // Log socket state after connection events
+    socket.on("connect", () => {
+      console.log("Socket connected:", socket.connected);
+      console.log("Socket ID:", socket.id);
+
+      // Authenticate after connection
+      socket.emit("authenticate", {
+        user_id: user?.user_id,
+        token: localStorage.getItem("token"),
+      });
+    });
+
+    socket.on("disconnect", () => {
+      console.log("Socket disconnected");
+    });
+
+    socket.on("connect_error", (error) => {
+      console.error("Socket connection error:", error.message);
+    });
+
+    socket.on("authenticated", (response) => {
+      if (response.success) {
+        console.log("Socket authenticated successfully");
+      } else {
+        console.error("Socket authentication failed:", response.error);
+      }
+    });
+
+    socket.on("leave_game_success", (data) => {
+      console.log("Successfully left game:", data);
+    });
+
+    socket.on("players_updated", (data) => {
+      console.log("Players updated:", data);
+      if (data.game_id === gameId) {
+        setPlayers(data.players);
+        fetchGameData();
+      }
+    });
+
+    socket.on("error", (error) => {
+      console.error("Socket error:", error);
+    });
+
+    // Clean up function
+    return () => {
+      if (socket.connected) {
+        socket.disconnect();
+      }
+    };
+  }, []);
 
   const fetchGameData = async () => {
     if (!gameId) {

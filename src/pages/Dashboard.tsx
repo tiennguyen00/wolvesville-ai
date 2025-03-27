@@ -9,13 +9,13 @@ const Dashboard: React.FC = () => {
     <div className="min-h-screen bg-gray-900">
       {/* Navigation */}
       <nav className="bg-gray-800 shadow-md">
-        <div className="container mx-auto px-6 py-3">
+        <div className="container px-6 py-3 mx-auto">
           <div className="flex items-center justify-between">
             <div className="flex items-center">
-              <div className="text-xl font-bold text-purple-500 mr-6">
+              <div className="mr-6 text-xl font-bold text-purple-500">
                 Wolvesville
               </div>
-              <div className="hidden md:flex space-x-6">
+              <div className="hidden space-x-6 md:flex">
                 <Link
                   to="/dashboard"
                   className="text-white hover:text-purple-400"
@@ -56,19 +56,19 @@ const Dashboard: React.FC = () => {
             </div>
             <div className="flex items-center space-x-4">
               <div className="flex items-center">
-                <div className="text-sm mr-2">
-                  <span className="hidden md:inline text-gray-300 mr-1">
+                <div className="mr-2 text-sm">
+                  <span className="hidden mr-1 text-gray-300 md:inline">
                     Gems:
                   </span>
-                  <span className="text-purple-400 font-medium">
+                  <span className="font-medium text-purple-400">
                     {user?.gems || 0}
                   </span>
                 </div>
-                <div className="text-sm mr-2">
-                  <span className="hidden md:inline text-gray-300 mr-1">
+                <div className="mr-2 text-sm">
+                  <span className="hidden mr-1 text-gray-300 md:inline">
                     Coins:
                   </span>
-                  <span className="text-yellow-400 font-medium">
+                  <span className="font-medium text-yellow-400">
                     {user?.gold_coins || 0}
                   </span>
                 </div>
@@ -91,7 +91,7 @@ const Dashboard: React.FC = () => {
                     ></path>
                   </svg>
                 </button>
-                <div className="absolute right-0 mt-2 w-48 bg-gray-800 rounded-md overflow-hidden shadow-xl z-10 hidden group-hover:block">
+                <div className="absolute right-0 z-10 block w-48 mt-2 overflow-hidden bg-gray-800 rounded-md shadow-xl group-hover:block">
                   <Link
                     to="/profile"
                     className="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-700"
@@ -118,7 +118,7 @@ const Dashboard: React.FC = () => {
                   </Link>
                   <button
                     onClick={logout}
-                    className="block w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700"
+                    className="block w-full px-4 py-2 text-sm text-left text-gray-300 hover:bg-gray-700"
                   >
                     Sign Out
                   </button>
@@ -130,55 +130,55 @@ const Dashboard: React.FC = () => {
       </nav>
 
       {/* Main content */}
-      <div className="container mx-auto px-6 py-8">
-        <h1 className="text-3xl font-bold text-white mb-8">
+      <div className="container px-6 py-8 mx-auto">
+        <h1 className="mb-8 text-3xl font-bold text-white">
           Welcome back,{" "}
           <span className="text-purple-500">{user?.username || "Player"}</span>!
         </h1>
 
         {/* Game Options */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
-          <div className="card transform hover:scale-105 transition-transform">
-            <h2 className="text-xl font-bold mb-4 text-white pixel-text">
+        <div className="grid grid-cols-1 gap-6 mb-12 md:grid-cols-2 lg:grid-cols-3">
+          <div className="transition-transform transform card hover:scale-105">
+            <h2 className="mb-4 text-xl font-bold text-white pixel-text">
               Quick Play
             </h2>
-            <p className="text-gray-300 mb-6">
+            <p className="mb-6 text-gray-300">
               Join a random game with other players. Get matched quickly and
               start playing within seconds.
             </p>
             <Link
               to="/games"
-              className="btn-primary w-full block text-center pixel-button"
+              className="block w-full text-center btn-primary pixel-button"
             >
               Find Game
             </Link>
           </div>
-          <div className="card transform hover:scale-105 transition-transform">
-            <h2 className="text-xl font-bold mb-4 text-white pixel-text">
+          <div className="transition-transform transform card hover:scale-105">
+            <h2 className="mb-4 text-xl font-bold text-white pixel-text">
               Create Game
             </h2>
-            <p className="text-gray-300 mb-6">
+            <p className="mb-6 text-gray-300">
               Create a custom game with your own rules and settings. Invite
               friends or open it to the public.
             </p>
             <Link
               to="/create-game"
-              className="btn-primary w-full block text-center pixel-button"
+              className="block w-full text-center btn-primary pixel-button"
             >
               Create New Game
             </Link>
           </div>
-          <div className="card transform hover:scale-105 transition-transform">
-            <h2 className="text-xl font-bold mb-4 text-white pixel-text">
+          <div className="transition-transform transform card hover:scale-105">
+            <h2 className="mb-4 text-xl font-bold text-white pixel-text">
               Browse Games
             </h2>
-            <p className="text-gray-300 mb-6">
+            <p className="mb-6 text-gray-300">
               Browse all available game lobbies. Filter by game mode, player
               count, and more.
             </p>
             <Link
               to="/games"
-              className="btn-primary w-full block text-center pixel-button"
+              className="block w-full text-center btn-primary pixel-button"
             >
               Browse Lobbies
             </Link>
@@ -187,29 +187,29 @@ const Dashboard: React.FC = () => {
 
         {/* Player Stats */}
         <div className="mb-12">
-          <h2 className="text-2xl font-bold text-white mb-6">Your Stats</h2>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <div className="bg-gray-800 rounded-lg p-4 shadow-md">
-              <div className="text-4xl font-bold text-white mb-2">42</div>
+          <h2 className="mb-6 text-2xl font-bold text-white">Your Stats</h2>
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-4">
+            <div className="p-4 bg-gray-800 rounded-lg shadow-md">
+              <div className="mb-2 text-4xl font-bold text-white">42</div>
               <div className="text-gray-400">Games Played</div>
             </div>
-            <div className="bg-gray-800 rounded-lg p-4 shadow-md">
-              <div className="text-4xl font-bold text-white mb-2">28</div>
+            <div className="p-4 bg-gray-800 rounded-lg shadow-md">
+              <div className="mb-2 text-4xl font-bold text-white">28</div>
               <div className="text-gray-400">Games Won</div>
             </div>
-            <div className="bg-gray-800 rounded-lg p-4 shadow-md">
-              <div className="text-4xl font-bold text-purple-500 mb-2">66%</div>
+            <div className="p-4 bg-gray-800 rounded-lg shadow-md">
+              <div className="mb-2 text-4xl font-bold text-purple-500">66%</div>
               <div className="text-gray-400">Win Rate</div>
             </div>
-            <div className="bg-gray-800 rounded-lg p-4 shadow-md">
-              <div className="text-4xl font-bold text-white mb-2">5</div>
+            <div className="p-4 bg-gray-800 rounded-lg shadow-md">
+              <div className="mb-2 text-4xl font-bold text-white">5</div>
               <div className="text-gray-400">Best Streak</div>
             </div>
           </div>
           <div className="mt-4 text-right">
             <Link
               to="/stats"
-              className="text-purple-500 hover:text-purple-400 text-sm font-medium"
+              className="text-sm font-medium text-purple-500 hover:text-purple-400"
             >
               View detailed statistics →
             </Link>
@@ -218,38 +218,38 @@ const Dashboard: React.FC = () => {
 
         {/* Recent Games */}
         <div>
-          <h2 className="text-2xl font-bold text-white mb-6">Recent Games</h2>
-          <div className="bg-gray-800 rounded-lg overflow-hidden shadow-md">
+          <h2 className="mb-6 text-2xl font-bold text-white">Recent Games</h2>
+          <div className="overflow-hidden bg-gray-800 rounded-lg shadow-md">
             <table className="min-w-full divide-y divide-gray-700">
               <thead className="bg-gray-700">
                 <tr>
                   <th
                     scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider"
+                    className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-300 uppercase"
                   >
                     Date
                   </th>
                   <th
                     scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider"
+                    className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-300 uppercase"
                   >
                     Game Mode
                   </th>
                   <th
                     scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider"
+                    className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-300 uppercase"
                   >
                     Role
                   </th>
                   <th
                     scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider"
+                    className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-300 uppercase"
                   >
                     Result
                   </th>
                   <th
                     scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider"
+                    className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-300 uppercase"
                   >
                     XP
                   </th>
@@ -257,53 +257,53 @@ const Dashboard: React.FC = () => {
               </thead>
               <tbody className="bg-gray-800 divide-y divide-gray-700">
                 <tr>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                  <td className="px-6 py-4 text-sm text-gray-300 whitespace-nowrap">
                     Today, 2:30 PM
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                  <td className="px-6 py-4 text-sm text-gray-300 whitespace-nowrap">
                     Classic
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                  <td className="px-6 py-4 text-sm text-gray-300 whitespace-nowrap">
                     Werewolf
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-400">
+                  <td className="px-6 py-4 text-sm font-medium text-green-400 whitespace-nowrap">
                     Victory
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                  <td className="px-6 py-4 text-sm text-gray-300 whitespace-nowrap">
                     +120 XP
                   </td>
                 </tr>
                 <tr>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                  <td className="px-6 py-4 text-sm text-gray-300 whitespace-nowrap">
                     Today, 1:15 PM
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                  <td className="px-6 py-4 text-sm text-gray-300 whitespace-nowrap">
                     Quick Play
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                  <td className="px-6 py-4 text-sm text-gray-300 whitespace-nowrap">
                     Village Elder
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-red-400">
+                  <td className="px-6 py-4 text-sm font-medium text-red-400 whitespace-nowrap">
                     Defeat
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                  <td className="px-6 py-4 text-sm text-gray-300 whitespace-nowrap">
                     +45 XP
                   </td>
                 </tr>
                 <tr>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                  <td className="px-6 py-4 text-sm text-gray-300 whitespace-nowrap">
                     Yesterday, 8:20 PM
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                  <td className="px-6 py-4 text-sm text-gray-300 whitespace-nowrap">
                     Custom
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                  <td className="px-6 py-4 text-sm text-gray-300 whitespace-nowrap">
                     Seer
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-400">
+                  <td className="px-6 py-4 text-sm font-medium text-green-400 whitespace-nowrap">
                     Victory
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                  <td className="px-6 py-4 text-sm text-gray-300 whitespace-nowrap">
                     +150 XP
                   </td>
                 </tr>
@@ -313,7 +313,7 @@ const Dashboard: React.FC = () => {
           <div className="mt-4 text-right">
             <Link
               to="/history"
-              className="text-purple-500 hover:text-purple-400 text-sm font-medium"
+              className="text-sm font-medium text-purple-500 hover:text-purple-400"
             >
               View all games →
             </Link>

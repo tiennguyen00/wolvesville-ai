@@ -75,7 +75,6 @@ const GamePlay: React.FC = () => {
       setGameState((prev) => ({
         ...prev!,
         phase: data.phase,
-        day_number: data.session.current_day,
         time_remaining: data.phase === "night" ? 120 : 180,
       }));
 
@@ -165,6 +164,7 @@ const GamePlay: React.FC = () => {
 
         // Load game details
         const gameData = await gameService.getGameById(gameId);
+        console.log("loadGameData", gameData);
 
         // Check if player was kicked
         if (gameData.players && checkIfKicked(gameData.players)) {
@@ -189,6 +189,7 @@ const GamePlay: React.FC = () => {
 
         // Load game state
         const stateData = await gameService.getGameState(gameId);
+        console.log("stateData", stateData);
         setGameState(stateData);
 
         // Start phase timer if game is in progress
@@ -198,10 +199,12 @@ const GamePlay: React.FC = () => {
 
         // Load game events
         const eventsData = await gameService.getGameEvents(gameId);
+        console.log("eventsData", eventsData);
         setEvents(eventsData);
 
         // Load chat messages
         const messagesData = await chatService.getMessages(gameId);
+        console.log("messagesData", messagesData);
         setMessages(messagesData);
 
         // Get role description
@@ -822,7 +825,7 @@ const GamePlay: React.FC = () => {
                       .map((event, index) => (
                         <div key={index} className="mb-1 text-sm last:mb-0">
                           <span className="text-gray-400">
-                            [Day {event.day_number}]
+                            [{event.event_data.phase || gameState.phase}]
                           </span>{" "}
                           <span className="text-gray-200">
                             {event.event_data.message || "An event occurred"}

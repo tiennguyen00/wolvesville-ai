@@ -1,8 +1,8 @@
 const express = require("express");
 const http = require("http");
-const socketIo = require("socket.io");
 const cors = require("cors");
-const { pool, initializeDatabase } = require("./config/db");
+const socketIo = require("socket.io");
+const { pool } = require("./config/db");
 const { userRoutes, gameRoutes, chatRoutes } = require("./routes");
 const { setupGameSocketHandlers } = require("./socket/gameSocketHandlers");
 const { setupChatSocketHandlers } = require("./socket/chatSocketHandlers");
@@ -11,9 +11,11 @@ require("dotenv").config();
 // Initialize express app
 const app = express();
 const server = http.createServer(app);
+
+// Initialize socket.io
 const io = socketIo(server, {
   cors: {
-    origin: process.env.SOCKET_CORS_ORIGIN || "*", // Allow all origins in development
+    origin: "*",
     methods: ["GET", "POST"],
     credentials: true,
   },
@@ -84,10 +86,10 @@ app.use((err, req, res, next) => {
 });
 
 // Start server
-const PORT = process.env.PORT || 5432;
+const PORT = process.env.PORT || 5001;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`API available at http://localhost:${PORT}/api`);
 });
 
-module.exports = { app, server };
+module.exports = { app, server, io };

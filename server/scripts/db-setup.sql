@@ -60,6 +60,14 @@ CREATE TABLE IF NOT EXISTS roles (
   icon VARCHAR(255),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+-- Add default roles
+INSERT INTO roles (role_name, faction, description, ability_description, icon) VALUES
+('Werewolf', 'Werewolves', 'A cunning and powerful werewolf', 'You can transform into a werewolf at night and vote to eliminate a villager', 'https://example.com/werewolf.png'),
+('Villager', 'Villagers', 'A simple villager trying to survive', 'You have no special abilities but can vote during the day', 'https://example.com/villager.png'),
+('Seer', 'Villagers', 'A mystical villager with psychic abilities', 'You can check one player each night to determine if they are a werewolf', 'https://example.com/seer.png'),
+('Doctor', 'Villagers', 'A skilled medical professional', 'You can protect one player each night from being eliminated', 'https://example.com/doctor.png'),
+('Hunter', 'Villagers', 'A skilled marksman with a single silver bullet', 'When eliminated, you can immediately take one player with you', 'https://example.com/hunter.png');
+
 
 -- Items Table (new)
 CREATE TABLE IF NOT EXISTS items (
@@ -190,6 +198,7 @@ CREATE INDEX IF NOT EXISTS idx_user_achievements_user_id ON user_achievements(us
 CREATE INDEX IF NOT EXISTS idx_friends_user_id ON friends(user_id);
 CREATE INDEX IF NOT EXISTS idx_friends_friend_id ON friends(friend_id);
 CREATE INDEX IF NOT EXISTS idx_game_votes_game_id ON game_votes(game_id);
+
 
 -- Add triggers for updated_at fields
 CREATE OR REPLACE FUNCTION update_modified_column() 

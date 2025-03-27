@@ -59,6 +59,23 @@ router.post("/", auth, async (req, res) => {
       current_phase || "lobby"
     );
 
+    // Get the io instance
+    const { io } = require("../index");
+
+    // Emit socket event for game creation
+    console.log("IOIOIOIOIO: ", io);
+    io.of("/game").emit("create_game", {
+      game_id: game.game_id,
+      host_id: userId,
+      settings: {
+        game_mode,
+        max_players,
+        password_protected,
+        current_phase: current_phase || "lobby",
+        ...settings,
+      },
+    });
+
     res.status(201).json({
       message: "Game created successfully",
       game,
@@ -98,6 +115,29 @@ router.post("/:id/join", auth, async (req, res) => {
     const userId = req.user.id;
 
     const result = await Game.joinGame(id, userId, game_password);
+
+    // Get the socket server instance
+    const io = req.app.get("io");
+    console.log("IO: ", io);
+    if (io) {
+      // Broadcast to game room that a new player joined
+      io.of("/game")
+        .to(`game:${id}`)
+        .emit("player_joined", {
+          userId,
+          player: {
+            user_id: userId,
+            username: req.user.username,
+            is_alive: true,
+          },
+        });
+
+      // Send updated player list to all clients
+      const gameDetails = await Game.getGameDetails(id);
+      io.of("/game").to(`game:${id}`).emit("players_updated", {
+        players: gameDetails.players,
+      });
+    }
 
     res.status(201).json({
       message: "Successfully joined the game",
@@ -193,6 +233,8 @@ router.post("/:id/start", auth, async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
+    console.log("reqbody: ", req.body);
+    console.log("requser: ", req.user);
 
     const result = await Game.startGame(id, userId);
 
@@ -478,7 +520,7 @@ router.post("/:id/leave", auth, async (req, res) => {
 
     // Call the Game model to leave the game
     // We'll use the kickPlayer method but with the player kicking themselves
-    const result = await Game.leaveGame(id, userId);
+    await Game.leaveGame(id, userId);
 
     res.json({
       message: "Successfully left the game",
@@ -536,7 +578,6 @@ router.post("/:id/phase/transition", auth, async (req, res) => {
     // Update game state
     const updates = {
       current_phase: phase,
-      day_number: phase === "day" ? game.day_number + 1 : game.day_number,
       time_remaining: phase === "night" ? 120 : 180, // 2 minutes for night, 3 for day
     };
 
@@ -562,119 +603,154 @@ router.post("/:id/phase/transition", auth, async (req, res) => {
   }
 });
 
-/**
- * @route   GET /api/games/:id/state
- * @desc    Get current game state
- * @access  Private
- */
+// @route   GET /api/games/:id/state
+// @desc    Get current game state
+// @access  Private
 router.get("/:id/state", auth, async (req, res) => {
   try {
-    const gameId = req.params.id;
+    const { id } = req.params;
     const userId = req.user.id;
 
-    // Check if game exists
-    const game = await Game.getGameDetails(gameId);
+    // Get game details
+    const game = await Game.getGameDetails(id);
     if (!game) {
       return res.status(404).json({ message: "Game not found" });
     }
 
-    // Check if user is in game
-    const player = game.players.find((p) => p.user_id === userId);
-    if (!player) {
-      return res.status(403).json({ message: "You are not in this game" });
-    }
-
     // Get current votes
-    const votes = await Game.getCurrentVotes(gameId);
+    const votes = await Game.getCurrentVotes(id);
 
-    // Get current role actions status
-    const roleActions = await Game.getRoleActions(gameId);
+    // Get role actions
+    const role_actions = await Game.getRoleActions(id);
 
     // Get recent events
-    const eventsQuery = `
-      SELECT 
-        event_id,
-        event_type,
-        event_data,
-        created_at,
-        is_public,
-        target_ids
-      FROM game_events
-      WHERE game_id = $1
-      AND (is_public = true OR initiator_id = $2)
-      ORDER BY created_at DESC
-      LIMIT 50
-    `;
+    const events = await Game.getGameEvents(id);
 
-    const { rows: events } = await pool.query(eventsQuery, [gameId, player.id]);
+    // Find current player
+    const player = game.players.find((p) => p.user_id === userId);
 
-    // Filter events based on player role and visibility
-    const visibleEvents = events.filter((event) => {
-      // Public events are visible to all
-      if (event.is_public) return true;
-
-      // Private events are only visible to the initiator or targets
-      if (!event.is_public) {
-        // If player initiated the event
-        if (event.initiator_id === player.id) return true;
-
-        // If player is a target of the event
-        if (event.target_ids && event.target_ids.includes(player.id))
-          return true;
-
-        // Special case for werewolves - they can see other werewolf actions
-        if (
-          player.role_name === "Werewolf" &&
-          event.event_data.faction === "werewolf"
-        )
-          return true;
-      }
-
-      return false;
-    });
-
-    // Build and return game state
     const gameState = {
       phase: game.current_phase,
-      day_number: game.day_number || 1,
-      time_remaining:
-        game.time_remaining || (game.current_phase === "night" ? 120 : 180),
-      players: game.players.map((p) => ({
-        id: p.id,
-        user_id: p.user_id,
-        username: p.username,
-        is_alive: p.is_alive,
-        role: p.role_name,
-        is_host: p.user_id === game.host_id,
-      })),
-      // Only include role info for the requesting player or if game is over
-      player: {
-        id: player.id,
-        role: player.role_name,
-        faction: player.faction,
-        is_alive: player.is_alive,
-        ability_used: roleActions[player.user_id] || false,
-      },
+      time_remaining: game.time_remaining || 0,
+      current_action: null,
       votes,
-      events: visibleEvents.map((e) => ({
-        id: e.event_id,
-        type: e.event_type,
-        data: e.event_data,
-        time: e.created_at,
-      })),
       eliminated_players: game.players
         .filter((p) => !p.is_alive)
-        .map((p) => ({
-          id: p.id,
-          username: p.username,
-          role: game.status === "completed" ? p.role_name : undefined,
-        })),
+        .map((p) => p.user_id),
+      role_actions,
+      events,
+      player: player
+        ? {
+            user_id: player.user_id,
+            username: player.username,
+            role: player.role_name,
+            team: player.faction,
+            is_alive: player.is_alive,
+          }
+        : null,
     };
 
     res.json(gameState);
   } catch (error) {
     console.error("Error getting game state:", error);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+// @route   GET /api/games/roles/:id
+// @desc    Get role information
+// @access  Private
+router.get("/roles/:id", auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const roleQuery = `
+      SELECT 
+        role_id,
+        role_name,
+        faction,
+        description,
+        ability_description,
+        icon,
+        created_at
+      FROM roles
+      WHERE role_id = $1
+    `;
+
+    const { rows } = await pool.query(roleQuery, [id]);
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "Role not found" });
+    }
+
+    res.json(rows[0]);
+  } catch (error) {
+    console.error("Error getting role info:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+// @route   POST /api/games/:id/vote
+// @desc    Vote for a player
+// @access  Private
+router.post("/:id/vote", auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { target_id } = req.body;
+    const userId = req.user.id;
+
+    if (!target_id) {
+      return res.status(400).json({ message: "Target ID is required" });
+    }
+
+    await Game.recordPlayerAction(id, userId, "vote", [target_id]);
+
+    res.json({ message: "Vote recorded successfully" });
+  } catch (error) {
+    console.error("Error recording vote:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+// @route   POST /api/games/:id/ability
+// @desc    Use role ability
+// @access  Private
+router.post("/:id/ability", auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { target_id, role_id } = req.body;
+    const userId = req.user.id;
+
+    if (!target_id || !role_id) {
+      return res
+        .status(400)
+        .json({ message: "Target ID and role ID are required" });
+    }
+
+    await Game.recordPlayerAction(id, userId, "ability", [target_id], {
+      role_id,
+    });
+
+    res.json({ message: "Ability used successfully" });
+  } catch (error) {
+    console.error("Error using ability:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+// @route   POST /api/games/:id/ability/skip
+// @desc    Skip using ability
+// @access  Private
+router.post("/:id/ability/skip", auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    await Game.recordPlayerAction(id, userId, "ability", [], { skip: true });
+
+    res.json({ message: "Ability skipped successfully" });
+  } catch (error) {
+    console.error("Error skipping ability:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
   }
 });
 
@@ -684,24 +760,13 @@ router.get("/:id/state", auth, async (req, res) => {
 router.post("/:id/ready", auth, async (req, res) => {
   try {
     const { id } = req.params;
-    const game = await Game.getGameDetails(id);
+    const userId = req.user.id;
 
-    if (!game) {
-      return res.status(404).json({ message: "Game not found" });
-    }
+    await Game.recordPlayerAction(id, userId, "ready", []);
 
-    // Get current player
-    const player = game.players.find((p) => p.user_id === req.user.id);
-    if (!player) {
-      return res.status(404).json({ message: "Player not found in this game" });
-    }
-
-    // Record ready status
-    await Game.recordPlayerAction(id, req.user.id, "ready", [], {});
-
-    res.json({ message: "Ready status recorded" });
+    res.json({ message: "Marked as ready successfully" });
   } catch (error) {
-    console.error("Error recording ready status:", error);
+    console.error("Error marking as ready:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 });
