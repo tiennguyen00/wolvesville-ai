@@ -2,22 +2,33 @@ import React, { useState, useEffect } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import gameService from "../services/gameService";
-import { GameSession, GamePlayer, Role } from "../services/gameService";
-import { io } from "socket.io-client";
+import { GamePlayer, Role } from "../services/gameService";
+import { useToast } from "../hooks/useToast";
+import { useSocket } from "../context/SocketContext";
+import { useQuery } from "@tanstack/react-query";
 
 const GameLobby: React.FC = () => {
   const { gameId } = useParams<{ gameId: string }>();
   const { isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
+  const { subscribeToPlayerUpdates } = useSocket();
 
-  const [game, setGame] = useState<GameSession | null>(null);
-  const [players, setPlayers] = useState<GamePlayer[]>([]);
   const [availableRoles, setAvailableRoles] = useState<Role[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [isHost, setIsHost] = useState(false);
   const [hostUsername, setHostUsername] = useState<string>("");
+  const {
+    data: gameData,
+    isPending: isGameDataPending,
+    error: gameDataError,
+    refetch: refetchGameData,
+  } = useQuery({
+    queryKey: ["game", gameId],
+    queryFn: () => gameService.getGameById(gameId || ""),
+    enabled: !!gameId,
+  });
+  const { toast } = useToast();
 
   const checkIfKicked = (currentPlayers: GamePlayer[]) => {
     // Only check if user was previously in the game
@@ -40,120 +51,6 @@ const GameLobby: React.FC = () => {
     return false;
   };
 
-  // Socket connection for game lobby
-  useEffect(() => {
-    if (!gameId || !isAuthenticated) return;
-
-    // Connect to socket with correct namespace
-    const socket = io("http://localhost:5001/game", {
-      auth: {
-        token: localStorage.getItem("token"),
-      },
-      transports: ["polling", "websocket"],
-      forceNew: true,
-    });
-
-    socket.on("create_game", (data) => {
-      console.log("Game created:", data);
-    });
-
-    // Log socket state after connection events
-    socket.on("connect", () => {
-      console.log("Socket connected:", socket.connected);
-      console.log("Socket ID:", socket.id);
-
-      // Authenticate after connection
-      socket.emit("authenticate", {
-        user_id: user?.user_id,
-        token: localStorage.getItem("token"),
-      });
-    });
-
-    socket.on("disconnect", () => {
-      console.log("Socket disconnected");
-    });
-
-    socket.on("connect_error", (error) => {
-      console.error("Socket connection error:", error.message);
-    });
-
-    socket.on("authenticated", (response) => {
-      if (response.success) {
-        console.log("Socket authenticated successfully");
-      } else {
-        console.error("Socket authentication failed:", response.error);
-      }
-    });
-
-    socket.on("leave_game_success", (data) => {
-      console.log("Successfully left game:", data);
-    });
-
-    socket.on("players_updated", (data) => {
-      console.log("Players updated:", data);
-      if (data.game_id === gameId) {
-        setPlayers(data.players);
-        fetchGameData();
-      }
-    });
-
-    socket.on("error", (error) => {
-      console.error("Socket error:", error);
-    });
-
-    // Clean up function
-    return () => {
-      if (socket.connected) {
-        socket.disconnect();
-      }
-    };
-  }, []);
-
-  const fetchGameData = async () => {
-    if (!gameId) {
-      setError("Game ID is missing");
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const gameData = await gameService.getGameById(gameId);
-
-      // Use the checkIfKicked function to handle kicked players
-      if (gameData.players && checkIfKicked(gameData.players)) {
-        navigate("/games", {
-          state: { message: "You have been removed from the game" },
-        });
-        return; // Stop execution if user was kicked
-      }
-
-      setGame(gameData);
-
-      setPlayers(gameData.players || []);
-
-      // Find host username from players list
-      const hostPlayer = gameData.players?.find(
-        (p) => p.user_id === gameData.host_id
-      );
-      setHostUsername(hostPlayer?.username || "Unknown Host");
-
-      // Check if current user is the host
-      setIsHost(gameData.host_id === user?.user_id);
-
-      // Check if game has moved to in_progress state
-      if (gameData.status === "in_progress") {
-        navigate(`/game/play/${gameId}`);
-      }
-
-      setError(null);
-    } catch (err) {
-      console.error("Error fetching game data:", err);
-      setError("Failed to load game data. The game may no longer exist.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const fetchRoles = async () => {
     try {
       const roles = await gameService.getRoles();
@@ -168,14 +65,40 @@ const GameLobby: React.FC = () => {
       navigate("/login");
       return;
     }
-
-    fetchGameData();
     fetchRoles();
+    if (!gameId) return;
 
-    // Polling interval for game updates
-    const interval = setInterval(fetchGameData, 5000);
-    return () => clearInterval(interval);
-  }, [gameId, isAuthenticated, navigate, user?.user_id]);
+    // Test toast
+    toast({
+      title: "Welcome to Game Lobby",
+      content: `You've joined game ${gameId}`,
+      status: "info",
+      duration: 3000,
+    });
+
+    // Subscribe to player updates
+    const unsubscribe = subscribeToPlayerUpdates(gameId, (data) => {
+      toast({
+        title: "Player updated",
+        content: `The player list has been updated: gameId: ${gameId}`,
+        status: "success",
+      });
+      console.log("new user join");
+      refetchGameData();
+    });
+
+    // Cleanup subscription when component unmounts
+    return () => {
+      unsubscribe();
+    };
+  }, [
+    isAuthenticated,
+    gameId,
+    user,
+    navigate,
+    subscribeToPlayerUpdates,
+    toast,
+  ]);
 
   const startCountdown = () => {
     console.log("starting countdown");
@@ -236,9 +159,6 @@ const GameLobby: React.FC = () => {
 
       await gameService.kickPlayer(gameId, playerId);
 
-      // Update the player list after kicking
-      setPlayers(players.filter((player) => player.user_id !== playerId));
-
       // Show a temporary notification
       const notification = document.createElement("div");
       notification.className =
@@ -256,7 +176,7 @@ const GameLobby: React.FC = () => {
     }
   };
 
-  if (loading) {
+  if (isGameDataPending) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-900">
         <div className="w-12 h-12 border-t-2 border-b-2 border-purple-500 rounded-full animate-spin"></div>
@@ -264,7 +184,7 @@ const GameLobby: React.FC = () => {
     );
   }
 
-  if (error || !game) {
+  if (error || gameDataError || !gameData) {
     return (
       <div className="flex items-center justify-center min-h-screen text-white bg-gray-900">
         <div className="max-w-md p-8 text-center bg-gray-800 rounded-lg">
@@ -291,7 +211,7 @@ const GameLobby: React.FC = () => {
               ← Back to Games
             </Link>
             <h1 className="mb-2 text-3xl font-bold text-white pixel-text">
-              Game Lobby: {"Game #" + game.game_id.slice(0, 8)}
+              Game Lobby: {"Game #" + gameData.game_id.slice(0, 8)}
             </h1>
             <p className="text-lg text-gray-400">
               Host: <span className="text-purple-400">{hostUsername}</span>
@@ -304,9 +224,9 @@ const GameLobby: React.FC = () => {
                 onClick={startCountdown}
                 className="flex items-center justify-center btn-primary pixel-button"
                 style={{
-                  opacity: players.length < 3 ? 0.25 : 1,
+                  opacity: (gameData?.players?.length ?? 0) < 3 ? 0.25 : 1,
                 }}
-                disabled={players.length < 3} // Require at least 3 players
+                disabled={(gameData?.players?.length ?? 0) < 3} // Require at least 3 players
               >
                 <svg
                   className="w-5 h-5 mr-2"
@@ -393,11 +313,12 @@ const GameLobby: React.FC = () => {
           <div className="md:col-span-2">
             <div className="p-6 bg-gray-800 rounded-lg pixel-container">
               <h2 className="mb-4 text-xl font-bold pixel-text">
-                Players ({players.length}/{game.max_players})
+                Players ({gameData?.players?.length ?? 0}/{gameData.max_players}
+                )
               </h2>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                {players.map((player) => (
+                {gameData?.players?.map((player) => (
                   <div
                     key={player.id}
                     className={`p-3 rounded-lg flex items-center ${
@@ -448,7 +369,10 @@ const GameLobby: React.FC = () => {
                 ))}
 
                 {Array.from(
-                  { length: game.max_players - players.length },
+                  {
+                    length:
+                      gameData.max_players - (gameData?.players?.length ?? 0),
+                  },
                   (_, i) => (
                     <div
                       key={`empty-${i}`}
@@ -477,35 +401,35 @@ const GameLobby: React.FC = () => {
               <div className="space-y-4">
                 <div>
                   <div className="mb-1 text-gray-400">Game Mode</div>
-                  <div className="font-medium">{game.game_mode}</div>
+                  <div className="font-medium">{gameData.game_mode}</div>
                 </div>
 
                 <div>
                   <div className="mb-1 text-gray-400">Password Protected</div>
                   <div className="font-medium">
-                    {game.password_protected ? "Yes" : "No"}
+                    {gameData.password_protected ? "Yes" : "No"}
                   </div>
                 </div>
 
                 <div>
                   <div className="mb-1 text-gray-400">Day Duration</div>
                   <div className="font-medium">
-                    {game.settings?.day_duration || 120} seconds
+                    {gameData.settings?.day_duration || 120} seconds
                   </div>
                 </div>
 
                 <div>
                   <div className="mb-1 text-gray-400">Night Duration</div>
                   <div className="font-medium">
-                    {game.settings?.night_duration || 60} seconds
+                    {gameData.settings?.night_duration || 60} seconds
                   </div>
                 </div>
 
                 <div>
                   <div className="mb-1 text-gray-400">Selected Roles</div>
                   <div className="flex flex-wrap gap-2 mt-2">
-                    {game.settings?.roles?.length ? (
-                      game.settings.roles.map((roleId) => {
+                    {gameData.settings?.roles?.length ? (
+                      gameData.settings.roles.map((roleId) => {
                         const role = availableRoles.find(
                           (r) => r.role_id === roleId
                         );
@@ -533,7 +457,7 @@ const GameLobby: React.FC = () => {
                 <div>
                   <div className="mb-1 text-gray-400">Created</div>
                   <div className="font-medium">
-                    {new Date(game.created_at).toLocaleString()}
+                    {new Date(gameData.created_at).toLocaleString()}
                   </div>
                 </div>
 

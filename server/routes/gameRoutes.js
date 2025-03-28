@@ -63,7 +63,6 @@ router.post("/", auth, async (req, res) => {
     const { io } = require("../index");
 
     // Emit socket event for game creation
-    console.log("IOIOIOIOIO: ", io);
     io.of("/game").emit("create_game", {
       game_id: game.game_id,
       host_id: userId,
@@ -118,7 +117,6 @@ router.post("/:id/join", auth, async (req, res) => {
 
     // Get the socket server instance
     const io = req.app.get("io");
-    console.log("IO: ", io);
     if (io) {
       // Broadcast to game room that a new player joined
       io.of("/game")

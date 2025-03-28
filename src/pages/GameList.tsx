@@ -2,49 +2,32 @@ import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import gameService, { GameSession } from "../services/gameService";
+import { useQuery } from "@tanstack/react-query";
 
 const GameList: React.FC = () => {
   const { isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
 
-  const [games, setGames] = useState<GameSession[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<
     "all" | "lobby" | "in_progress" | "completed"
   >("all");
   const [passwordInput, setPasswordInput] = useState("");
   const [selectedGame, setSelectedGame] = useState<GameSession | null>(null);
   const [joinError, setJoinError] = useState<string | null>(null);
+  const {
+    data: dataListGames,
+    isLoading: isLoadingListGames,
+    error: errorListGames,
+  } = useQuery({
+    queryKey: ["list-games"],
+    queryFn: () => gameService.getGames(),
+  });
 
   useEffect(() => {
     if (!isAuthenticated) {
       navigate("/login");
-      return;
     }
-
-    const fetchGames = async () => {
-      try {
-        setLoading(true);
-        const gamesData = await gameService.listGames(
-          filter !== "all" ? filter : undefined
-        );
-        setGames(gamesData);
-        setError(null);
-      } catch (err) {
-        console.error("Error fetching games:", err);
-        setError("Failed to load games. Please try again later.");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchGames();
-
-    // Poll for game updates every 10 seconds
-    const interval = setInterval(fetchGames, 10000);
-    return () => clearInterval(interval);
-  }, [isAuthenticated, navigate, filter]);
+  }, [isAuthenticated, navigate]);
 
   const handleJoinGame = async (game: GameSession) => {
     if (game.password_protected) {
@@ -122,7 +105,7 @@ const GameList: React.FC = () => {
     }
   };
 
-  if (loading && games.length === 0) {
+  if (isLoadingListGames) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-900">
         <div className="w-12 h-12 border-t-2 border-b-2 border-purple-500 rounded-full animate-spin"></div>
@@ -186,9 +169,9 @@ const GameList: React.FC = () => {
           </div>
         </header>
 
-        {error && (
+        {errorListGames && (
           <div className="px-4 py-3 mb-4 text-red-100 border border-red-500 rounded bg-red-500/20">
-            {error}
+            {errorListGames.message}
           </div>
         )}
 
@@ -205,8 +188,8 @@ const GameList: React.FC = () => {
         )}
 
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {games.length > 0 ? (
-            games.map((game) => (
+          {dataListGames && dataListGames?.length > 0 ? (
+            dataListGames?.map((game) => (
               <div
                 key={game.game_id}
                 className="overflow-hidden bg-gray-800 border-2 border-gray-700 rounded-lg pixel-container"

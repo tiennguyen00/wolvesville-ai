@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { Routes, Route } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
 
@@ -19,9 +19,10 @@ import History from "./pages/History";
 
 // Components
 import ProtectedRoute from "./components/ProtectedRoute";
+import Providers from "./providers";
 
 function App() {
-  const { isAuthenticated, loading } = useAuth();
+  const { loading } = useAuth();
 
   if (loading) {
     return (
@@ -32,91 +33,93 @@ function App() {
   }
 
   return (
-    <Routes>
-      {/* Public routes */}
-      <Route path="/" element={<Home />} />
-      <Route path="/login" element={<Login />} />
-      <Route path="/register" element={<Register />} />
+    <Providers>
+      <Routes>
+        {/* Public routes */}
+        <Route path="/" element={<Home />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
 
-      {/* Protected routes */}
-      <Route
-        path="/dashboard"
-        element={
-          <ProtectedRoute>
-            <Dashboard />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/profile"
-        element={
-          <ProtectedRoute>
-            <Profile />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/stats"
-        element={
-          <ProtectedRoute>
-            <Stats />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/history"
-        element={
-          <ProtectedRoute>
-            <History />
-          </ProtectedRoute>
-        }
-      />
+        {/* Protected routes */}
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute>
+              <Profile />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/stats"
+          element={
+            <ProtectedRoute>
+              <Stats />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/history"
+          element={
+            <ProtectedRoute>
+              <History />
+            </ProtectedRoute>
+          }
+        />
 
-      {/* Game routes */}
-      <Route
-        path="/games"
-        element={
-          <ProtectedRoute>
-            <GameList />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/create-game"
-        element={
-          <ProtectedRoute>
-            <CreateGame />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/game/lobby/:gameId"
-        element={
-          <ProtectedRoute>
-            <GameLobby />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/game/play/:gameId"
-        element={
-          <ProtectedRoute>
-            <GamePlay />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/game/summary/:gameId"
-        element={
-          <ProtectedRoute>
-            <GameSummary />
-          </ProtectedRoute>
-        }
-      />
+        {/* Game routes */}
+        <Route
+          path="/games"
+          element={
+            <ProtectedRoute>
+              <GameList />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/create-game"
+          element={
+            <ProtectedRoute>
+              <CreateGame />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/game/lobby/:gameId"
+          element={
+            <ProtectedRoute>
+              <GameLobby />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/game/play/:gameId"
+          element={
+            <ProtectedRoute>
+              <GamePlay />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/game/summary/:gameId"
+          element={
+            <ProtectedRoute>
+              <GameSummary />
+            </ProtectedRoute>
+          }
+        />
 
-      {/* 404 route */}
-      <Route path="*" element={<NotFound />} />
-    </Routes>
+        {/* 404 route */}
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </Providers>
   );
 }
 
