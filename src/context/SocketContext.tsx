@@ -11,7 +11,7 @@ import { useAuth } from "./AuthContext";
 import { useToast } from "../hooks/useToast";
 import { useQuery } from "@tanstack/react-query";
 import gameService, { GamePlayer } from "../services/gameService";
-import SOCKET_EVENTS from "../../constants/socketEvents";
+import SOCKET_EVENTS from "../constants/socketEvents";
 
 interface PlayersUpdatedData {
   players: GamePlayer[];

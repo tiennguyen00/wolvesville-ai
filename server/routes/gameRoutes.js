@@ -5,7 +5,7 @@ const { pool } = require("../config/db");
 const auth = require("../middleware/auth");
 const { Game } = require("../models/game");
 const Chat = require("../models/Chat");
-const SOCKET_EVENTS = require("../../constants/socketEvents");
+const SOCKET_EVENTS = require("../constants/socketEvents");
 
 // Test route to verify the router is working
 router.get("/test", (req, res) => {

@@ -1,6 +1,6 @@
 /**
- * Socket event name constants for use throughout the server
- * This ensures consistency between client and server
+ * Socket event name constants for use throughout the client
+ * This ensures consistency between client components
  */
 
 const SOCKET_EVENTS = {
@@ -48,4 +48,4 @@ const SOCKET_EVENTS = {
   GAME_ENDED: "game_ended",
 };
 
-module.exports = SOCKET_EVENTS;
+export default SOCKET_EVENTS;

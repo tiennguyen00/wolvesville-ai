@@ -6,7 +6,7 @@ import { GamePlayer, Role } from "../services/gameService";
 import { useToast } from "../hooks/useToast";
 import { useSocket } from "../context/SocketContext";
 import { useQuery } from "@tanstack/react-query";
-import SOCKET_EVENTS from "../../constants/socketEvents";
+import SOCKET_EVENTS from "../constants/socketEvents";
 
 const GameLobby: React.FC = () => {
   const { gameId } = useParams<{ gameId: string }>();

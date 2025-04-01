@@ -1,6 +1,6 @@
 const { pool } = require("../config/db");
 const { Game } = require("../models/game");
-const SOCKET_EVENTS = require("../../constants/socketEvents");
+const SOCKET_EVENTS = require("../constants/socketEvents");
 
 // Map to store active games and their connected players
 const activeGames = new Map();
