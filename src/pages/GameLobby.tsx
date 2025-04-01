@@ -12,7 +12,8 @@ const GameLobby: React.FC = () => {
   const { gameId } = useParams<{ gameId: string }>();
   const { isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
-  const { socket, joinGameRoom, leaveGameRoom } = useSocket();
+  const { socket, unsubscribeFromPlayerUpdates, subscribeToPlayerUpdates } =
+    useSocket();
   const { toast } = useToast();
 
   const [availableRoles, setAvailableRoles] = useState<Role[]>([]);
@@ -52,34 +53,28 @@ const GameLobby: React.FC = () => {
   useEffect(() => {
     if (!isAuthenticated || !gameId || !socket) return;
 
-    joinGameRoom(gameId, user?.username || user?.email);
-
-    // Set up event listeners
-    const onUserJoined = (data: any) => {
-      toast({
-        title: "User joined",
-        content: `${data.username} joined the game`,
-        status: "success",
-      });
+    subscribeToPlayerUpdates(gameId, user?.user_id || "", (data) => {
       // Refresh game data
       refetchGameData();
-    };
-    const onUserLeft = (data: any) => {
+    });
+    // Listen for player joined events
+    socket.on(SOCKET_EVENTS.USER_JOINED_ROOM, (data: any) => {
+      toast({
+        title: "User joined",
+        content: `${data?.player_id} joined the game`,
+        status: "success",
+      });
+    });
+    socket.on(SOCKET_EVENTS.USER_LEFT_ROOM, (data: any) => {
       toast({
         title: "User left",
-        content: `${data.username} left the game`,
+        content: `${data?.player_id} left the game`,
         status: "info",
       });
-      refetchGameData();
-    };
-    // Listen for player joined events
-    socket.on(SOCKET_EVENTS.USER_JOINED_ROOM, onUserJoined);
-    socket.on(SOCKET_EVENTS.USER_LEFT_ROOM, onUserLeft);
+    });
 
-    // Clean up event listeners when component unmounts
     return () => {
-      socket.off(SOCKET_EVENTS.PLAYER_JOINED, onUserJoined);
-      leaveGameRoom(gameId, user?.username || user?.email);
+      unsubscribeFromPlayerUpdates(gameId, user?.user_id || "");
     };
   }, [isAuthenticated, gameId, socket]);
 
@@ -156,18 +151,6 @@ const GameLobby: React.FC = () => {
       }
 
       await gameService.kickPlayer(gameId, playerId);
-
-      // Show a temporary notification
-      const notification = document.createElement("div");
-      notification.className =
-        "fixed px-4 py-2 text-white bg-green-800 rounded shadow-lg top-4 right-4";
-      notification.textContent = "Player kicked successfully";
-      document.body.appendChild(notification);
-
-      // Remove notification after 3 seconds
-      setTimeout(() => {
-        document.body.removeChild(notification);
-      }, 3000);
     } catch (err) {
       console.error("Error kicking player:", err);
       setError("Failed to kick player. Please try again.");

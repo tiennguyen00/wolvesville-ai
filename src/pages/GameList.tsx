@@ -41,7 +41,8 @@ const GameList: React.FC = () => {
     } catch (err) {
       console.error("Error joining game:", err);
       setJoinError(
-        "Failed to join game. It might be full or no longer available."
+        err.response.data.error ||
+          "Failed to join game. It might be full or no longer available."
       );
     }
   };

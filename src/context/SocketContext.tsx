@@ -17,23 +17,18 @@ interface PlayersUpdatedData {
   players: GamePlayer[];
 }
 
-interface PlayerJoinedData {
-  userId: string;
-  player: {
-    user_id: string;
-    username: string;
-    is_alive: boolean;
-  };
-}
-
 interface SocketContextType {
   socket: Socket | null;
   subscribeToPlayerUpdates: (
     gameId: string,
+    playerId: string,
     callback: (data: PlayersUpdatedData) => void
-  ) => () => void;
-  joinGameRoom: (gameId: string, username?: string) => void;
-  leaveGameRoom: (gameId: string, username?: string) => void;
+  ) => void;
+  unsubscribeFromPlayerUpdates: (
+    gameId: string,
+    playerId: string,
+    callback: (data: PlayersUpdatedData) => void
+  ) => void;
 }
 
 const SocketContext = createContext<SocketContextType | undefined>(undefined);
@@ -59,45 +54,55 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({
     queryFn: () => gameService.getGames(),
   });
 
-  const joinGameRoom = (gameId: string, username?: string) => {
+  const joinGameRoom = (gameId: string, playerId?: string) => {
     if (socket) {
-      socket.emit(SOCKET_EVENTS.JOIN_GAME_ROOM, { gameId, username });
-      console.log("Emitted join_game_room for gameId:", gameId);
+      socket.emit(SOCKET_EVENTS.JOIN_GAME_ROOM, { gameId, playerId });
     }
   };
 
-  const leaveGameRoom = (gameId: string, username?: string) => {
+  const leaveGameRoom = (gameId: string, playerId?: string) => {
     if (socket) {
-      socket.emit(SOCKET_EVENTS.LEAVE_GAME_ROOM, { gameId, username });
+      socket.emit(SOCKET_EVENTS.LEAVE_GAME_ROOM, { gameId, playerId });
     }
+  };
+
+  const handlePlayersUpdated = (data: PlayersUpdatedData, cb) => {
+    console.log("Received players_updated event:", data);
+    cb(data);
   };
 
   const subscribeToPlayerUpdates = useCallback(
-    (gameId: string, callback: (data: PlayersUpdatedData) => void) => {
-      const handlePlayersUpdated = (data: PlayersUpdatedData) => {
-        console.log("Received players_updated event:", data);
-        callback(data);
-      };
-
+    (
+      gameId: string,
+      playerId: string,
+      callback: (data: PlayersUpdatedData) => void
+    ) => {
       if (socket) {
-        // Join the game room
-        joinGameRoom(gameId);
-
+        joinGameRoom(gameId, playerId);
         // Listen for updates
-        socket.on(SOCKET_EVENTS.PLAYERS_UPDATED, handlePlayersUpdated);
+        socket.on(SOCKET_EVENTS.PLAYERS_UPDATED, (data) =>
+          handlePlayersUpdated(data, callback)
+        );
       }
-
-      // Return cleanup function
-      return () => {
-        if (socket) {
-          socket.off(SOCKET_EVENTS.PLAYERS_UPDATED, handlePlayersUpdated);
-          leaveGameRoom(gameId);
-        }
-      };
     },
-    [joinGameRoom, leaveGameRoom]
+    [joinGameRoom]
   );
 
+  const unsubscribeFromPlayerUpdates = useCallback(
+    (
+      gameId: string,
+      playerId: string,
+      callback: (data: PlayersUpdatedData) => void
+    ) => {
+      if (socket) {
+        leaveGameRoom(gameId, playerId);
+        socket.off(SOCKET_EVENTS.PLAYERS_UPDATED, (data) =>
+          handlePlayersUpdated(data, callback)
+        );
+      }
+    },
+    [leaveGameRoom]
+  );
   useEffect(() => {
     if (!isAuthenticated) {
       // If not authenticated, clean up any existing socket
@@ -161,8 +166,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({
       value={{
         socket,
         subscribeToPlayerUpdates,
-        joinGameRoom,
-        leaveGameRoom,
+        unsubscribeFromPlayerUpdates,
       }}
     >
       {children}
