@@ -1,5 +1,6 @@
 const { pool } = require("../config/db");
 const { Game } = require("../models/game");
+const SOCKET_EVENTS = require("../../constants/socketEvents");
 
 // Map to store active games and their connected players
 const activeGames = new Map();
@@ -9,7 +10,7 @@ const setupGameSocketHandlers = (io) => {
   // Create a namespace for game-related events
   const gameNamespace = io.of("/game");
 
-  gameNamespace.on("connection", (socket) => {
+  gameNamespace.on(SOCKET_EVENTS.CONNECT, (socket) => {
     console.log(`New connection to game namespace: ${socket.id}`);
 
     // Track user data
@@ -21,16 +22,19 @@ const setupGameSocketHandlers = (io) => {
       try {
         const { user_id, token } = data;
         userId = user_id;
-        socket.emit("authenticated", { success: true });
+        socket.emit(SOCKET_EVENTS.AUTHENTICATED, { success: true });
         // console.log(`User ${userId} authenticated on socket ${socket.id}`);
       } catch (error) {
         console.error("Authentication error:", error);
-        socket.emit("authenticated", { success: false, error: error.message });
+        socket.emit(SOCKET_EVENTS.AUTHENTICATED, {
+          success: false,
+          error: error.message,
+        });
       }
     });
 
     // Handle game creation broadcast
-    socket.on("create_game", async (data) => {
+    socket.on(SOCKET_EVENTS.CREATE_GAME, async (data) => {
       console.log("CREATE_GAME SOCKET HANDLER");
       try {
         const { game_id, settings, host_info } = data;
@@ -46,14 +50,14 @@ const setupGameSocketHandlers = (io) => {
         socket.join(`game:${gameId}`);
 
         // Broadcast new game to all connected clients
-        gameNamespace.emit("game_created", {
+        gameNamespace.emit(SOCKET_EVENTS.GAME_CREATED, {
           game_id: gameId,
           settings,
           host_info,
         });
 
         // Confirm room joined to host
-        socket.emit("room_joined", {
+        socket.emit(SOCKET_EVENTS.ROOM_JOINED, {
           game_id: gameId,
           status: "success",
         });
@@ -61,12 +65,12 @@ const setupGameSocketHandlers = (io) => {
         console.log(`Game ${gameId} created by host ${host_info.user_id}`);
       } catch (error) {
         console.error("Error in game creation:", error);
-        socket.emit("error", { message: error.message });
+        socket.emit(SOCKET_EVENTS.ERROR, { message: error.message });
       }
     });
 
     // Join a game
-    socket.on("join_game", async (data) => {
+    socket.on(SOCKET_EVENTS.JOIN_GAME, async (data) => {
       console.log("JOIN_GAME SOCKET HANDLER");
       try {
         const { game_id, password } = data;
@@ -85,7 +89,7 @@ const setupGameSocketHandlers = (io) => {
         socket.join(game_id);
 
         // Emit success event to the client who joined
-        socket.emit("join_game_success", {
+        socket.emit(SOCKET_EVENTS.JOIN_GAME_SUCCESS, {
           game_id,
           player_id: result.player_id,
         });
@@ -100,20 +104,20 @@ const setupGameSocketHandlers = (io) => {
         const { rows: players } = await pool.query(playersQuery, [game_id]);
 
         // Broadcast to all clients in the game room
-        io.to(game_id).emit("player_joined", {
+        io.to(game_id).emit(SOCKET_EVENTS.PLAYER_JOINED, {
           user_id,
           username: user.username,
           player_id: result.player_id,
         });
 
         // Update all clients with new player list
-        io.to(game_id).emit("players_updated", {
+        io.to(game_id).emit(SOCKET_EVENTS.PLAYERS_UPDATED, {
           game_id,
           players,
         });
       } catch (error) {
         console.error("Error in join_game handler:", error);
-        socket.emit("error", {
+        socket.emit(SOCKET_EVENTS.ERROR, {
           type: "join_game_error",
           message: error.message,
         });
@@ -184,7 +188,7 @@ const setupGameSocketHandlers = (io) => {
         }
       } catch (error) {
         console.error("Error setting player ready:", error);
-        socket.emit("error", { message: error.message });
+        socket.emit(SOCKET_EVENTS.ERROR, { message: error.message });
       }
     });
 
@@ -284,7 +288,7 @@ const setupGameSocketHandlers = (io) => {
         }
       } catch (error) {
         console.error("Error processing game action:", error);
-        socket.emit("error", { message: error.message });
+        socket.emit(SOCKET_EVENTS.ERROR, { message: error.message });
       }
     });
 
@@ -330,13 +334,13 @@ const setupGameSocketHandlers = (io) => {
         });
 
         // Update all clients with new player list
-        io.to(game_id).emit("players_updated", {
+        io.to(game_id).emit(SOCKET_EVENTS.PLAYERS_UPDATED, {
           game_id,
           players,
         });
       } catch (error) {
         console.error("Error in leave_game handler:", error);
-        socket.emit("error", {
+        socket.emit(SOCKET_EVENTS.ERROR, {
           type: "leave_game_error",
           message: error.message,
         });
@@ -363,13 +367,42 @@ const setupGameSocketHandlers = (io) => {
           );
 
           // Notify all clients in the room
-          socket.to(`game:${gameId}`).emit("player_disconnected", {
+          socket.to(`game:${gameId}`).emit(SOCKET_EVENTS.PLAYER_DISCONNECTED, {
             userId,
           });
         }
       } catch (error) {
         console.error("Error handling disconnect:", error);
       }
+    });
+
+    // Handle joining a specific game room
+    socket.on(SOCKET_EVENTS.JOIN_GAME_ROOM, ({ gameId, username }) => {
+      if (!gameId) return;
+
+      console.log(`User ${socket.id} joining game room: game:${gameId}`);
+      socket.join(`game:${gameId}`);
+
+      // Optionally notify the room that someone joined (for debugging)
+      socket.to(`game:${gameId}`).emit(SOCKET_EVENTS.USER_JOINED_ROOM, {
+        username,
+        game_id: gameId,
+        timestamp: new Date(),
+      });
+    });
+
+    // Handle leaving a specific game room
+    socket.on(SOCKET_EVENTS.LEAVE_GAME_ROOM, ({ gameId, username }) => {
+      if (!gameId) return;
+      // Optionally notify the room that someone left (for debugging)
+      socket.to(`game:${gameId}`).emit(SOCKET_EVENTS.USER_LEFT_ROOM, {
+        username,
+        game_id: gameId,
+        timestamp: new Date(),
+      });
+
+      // the client will no longer receive messages or events sent to that room.
+      socket.leave(`game:${gameId}`);
     });
   });
 
@@ -461,7 +494,7 @@ async function startGame(gameId, namespace) {
     const updatedState = await getGameStateWithPlayers(gameId);
 
     // Notify all players that game has started
-    namespace.to(`game:${gameId}`).emit("game_started", {
+    namespace.to(`game:${gameId}`).emit(SOCKET_EVENTS.GAME_STARTED, {
       game: updatedState.game,
       players: updatedState.players,
       startTime: new Date(),
@@ -472,7 +505,9 @@ async function startGame(gameId, namespace) {
   } catch (error) {
     await client.query("ROLLBACK");
     console.error("Error starting game:", error);
-    namespace.to(`game:${gameId}`).emit("error", { message: error.message });
+    namespace
+      .to(`game:${gameId}`)
+      .emit(SOCKET_EVENTS.ERROR, { message: error.message });
   } finally {
     client.release();
   }
@@ -514,7 +549,7 @@ async function transitionToDay(gameId, namespace) {
     const killedPlayer = killedPlayerResult.rows[0];
 
     // Emit phase change to all players
-    namespace.to(`game:${gameId}`).emit("phase_changed", {
+    namespace.to(`game:${gameId}`).emit(SOCKET_EVENTS.PHASE_CHANGED, {
       phase: "day",
       session: {
         current_day: gameState.game.current_day,
@@ -575,7 +610,7 @@ async function transitionToNight(gameId, namespace) {
     const lynchedPlayer = lynchedPlayerResult.rows[0];
 
     // Emit phase change to all players
-    namespace.to(`game:${gameId}`).emit("phase_changed", {
+    namespace.to(`game:${gameId}`).emit(SOCKET_EVENTS.PHASE_CHANGED, {
       phase: "night",
       session: {
         current_day: gameState.game.current_day,
@@ -646,7 +681,7 @@ async function checkWinConditions(gameId, namespace) {
       const finalState = await getGameStateWithPlayers(gameId);
 
       // Notify players of game end
-      namespace.to(`game:${gameId}`).emit("game_ended", {
+      namespace.to(`game:${gameId}`).emit(SOCKET_EVENTS.GAME_ENDED, {
         winner: winner_faction,
       });
 
@@ -666,4 +701,6 @@ async function checkWinConditions(gameId, namespace) {
 
 module.exports = {
   setupGameSocketHandlers,
+  activeGames,
+  // Any other helpers that might be useful externally
 };

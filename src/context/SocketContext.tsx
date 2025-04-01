@@ -4,15 +4,26 @@ import React, {
   useEffect,
   useRef,
   useCallback,
+  useState,
 } from "react";
 import { io, Socket } from "socket.io-client";
 import { useAuth } from "./AuthContext";
 import { useToast } from "../hooks/useToast";
 import { useQuery } from "@tanstack/react-query";
 import gameService, { GamePlayer } from "../services/gameService";
+import SOCKET_EVENTS from "../../constants/socketEvents";
 
 interface PlayersUpdatedData {
   players: GamePlayer[];
+}
+
+interface PlayerJoinedData {
+  userId: string;
+  player: {
+    user_id: string;
+    username: string;
+    is_alive: boolean;
+  };
 }
 
 interface SocketContextType {
@@ -21,6 +32,8 @@ interface SocketContextType {
     gameId: string,
     callback: (data: PlayersUpdatedData) => void
   ) => () => void;
+  joinGameRoom: (gameId: string, username?: string) => void;
+  leaveGameRoom: (gameId: string, username?: string) => void;
 }
 
 const SocketContext = createContext<SocketContextType | undefined>(undefined);
@@ -37,7 +50,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const { isAuthenticated } = useAuth();
-  const socketRef = useRef<Socket | null>(null);
+  const [socket, setSocket] = useState<Socket | null>(null);
   const { toast } = useToast();
 
   // Subscribe to the games query
@@ -46,26 +59,57 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({
     queryFn: () => gameService.getGames(),
   });
 
+  const joinGameRoom = (gameId: string, username?: string) => {
+    if (socket) {
+      socket.emit(SOCKET_EVENTS.JOIN_GAME_ROOM, { gameId, username });
+      console.log("Emitted join_game_room for gameId:", gameId);
+    }
+  };
+
+  const leaveGameRoom = (gameId: string, username?: string) => {
+    if (socket) {
+      socket.emit(SOCKET_EVENTS.LEAVE_GAME_ROOM, { gameId, username });
+    }
+  };
+
   const subscribeToPlayerUpdates = useCallback(
     (gameId: string, callback: (data: PlayersUpdatedData) => void) => {
       const handlePlayersUpdated = (data: PlayersUpdatedData) => {
+        console.log("Received players_updated event:", data);
         callback(data);
       };
 
-      socketRef.current?.on("players_updated", handlePlayersUpdated);
+      if (socket) {
+        // Join the game room
+        joinGameRoom(gameId);
 
+        // Listen for updates
+        socket.on(SOCKET_EVENTS.PLAYERS_UPDATED, handlePlayersUpdated);
+      }
+
+      // Return cleanup function
       return () => {
-        socketRef.current?.off("players_updated", handlePlayersUpdated);
+        if (socket) {
+          socket.off(SOCKET_EVENTS.PLAYERS_UPDATED, handlePlayersUpdated);
+          leaveGameRoom(gameId);
+        }
       };
     },
-    []
+    [joinGameRoom, leaveGameRoom]
   );
 
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated) {
+      // If not authenticated, clean up any existing socket
+      if (socket) {
+        socket.disconnect();
+        setSocket(null);
+      }
+      return;
+    }
 
     // Connect to socket with correct namespace
-    socketRef.current = io("http://localhost:5001/game", {
+    const newSocket = io("http://localhost:5001/game", {
       auth: {
         token: localStorage.getItem("token"),
       },
@@ -73,27 +117,28 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({
       forceNew: true,
     });
 
+    setSocket(newSocket);
+
     // Log socket state after connection events
-    socketRef.current?.on("connect", () => {
-      console.log("Socket connected:", socketRef.current?.connected);
-      console.log("Socket ID:", socketRef.current?.id);
+    newSocket.on(SOCKET_EVENTS.CONNECT, () => {
+      console.log("Socket connected:", newSocket.connected);
+      console.log("Socket ID:", newSocket.id);
     });
 
-    socketRef.current?.on("disconnect", () => {
+    newSocket.on(SOCKET_EVENTS.DISCONNECT, () => {
       console.log("Socket disconnected");
     });
 
-    socketRef.current?.on("connect_error", (error) => {
+    newSocket.on(SOCKET_EVENTS.CONNECT_ERROR, (error) => {
       console.error("Socket connection error:", error.message);
     });
 
-    socketRef.current?.on("error", (error) => {
+    newSocket.on(SOCKET_EVENTS.ERROR, (error) => {
       console.error("Socket error:", error);
     });
 
     // ===========================================
-    socketRef.current?.on("create_game", (data) => {
-      console.log("create_game", data);
+    newSocket.on(SOCKET_EVENTS.CREATE_GAME, (data) => {
       toast({
         title: "Game created",
         content: "A new game has been created",
@@ -104,17 +149,20 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({
 
     // Clean up function
     return () => {
-      if (socketRef.current?.connected) {
-        socketRef.current?.disconnect();
+      if (newSocket.connected) {
+        newSocket.disconnect();
+        setSocket(null);
       }
     };
-  }, [isAuthenticated, toast, refetchListGames]);
+  }, [isAuthenticated]);
 
   return (
     <SocketContext.Provider
       value={{
-        socket: socketRef.current,
+        socket,
         subscribeToPlayerUpdates,
+        joinGameRoom,
+        leaveGameRoom,
       }}
     >
       {children}

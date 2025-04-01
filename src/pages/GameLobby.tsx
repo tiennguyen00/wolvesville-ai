@@ -6,18 +6,21 @@ import { GamePlayer, Role } from "../services/gameService";
 import { useToast } from "../hooks/useToast";
 import { useSocket } from "../context/SocketContext";
 import { useQuery } from "@tanstack/react-query";
+import SOCKET_EVENTS from "../../constants/socketEvents";
 
 const GameLobby: React.FC = () => {
   const { gameId } = useParams<{ gameId: string }>();
   const { isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
-  const { subscribeToPlayerUpdates } = useSocket();
+  const { socket, joinGameRoom, leaveGameRoom } = useSocket();
+  const { toast } = useToast();
 
   const [availableRoles, setAvailableRoles] = useState<Role[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [isHost, setIsHost] = useState(false);
   const [hostUsername, setHostUsername] = useState<string>("");
+
   const {
     data: gameData,
     isPending: isGameDataPending,
@@ -28,28 +31,6 @@ const GameLobby: React.FC = () => {
     queryFn: () => gameService.getGameById(gameId || ""),
     enabled: !!gameId,
   });
-  const { toast } = useToast();
-
-  const checkIfKicked = (currentPlayers: GamePlayer[]) => {
-    // Only check if user was previously in the game
-    if (!user) return false;
-
-    // Check if user is still in the player list
-    const isStillInGame = currentPlayers.some(
-      (player) => player.user_id === user.user_id
-    );
-
-    if (!isStillInGame) {
-      // Player was in the game but is not anymore - they were kicked
-      console.log("Player was kicked from the game");
-      navigate("/games", {
-        state: { message: "You have been removed from the game" },
-      });
-      return true;
-    }
-
-    return false;
-  };
 
   const fetchRoles = async () => {
     try {
@@ -66,42 +47,59 @@ const GameLobby: React.FC = () => {
       return;
     }
     fetchRoles();
-    if (!gameId) return;
+  }, [isAuthenticated, navigate]);
 
-    // Test toast
-    toast({
-      title: "Welcome to Game Lobby",
-      content: `You've joined game ${gameId}`,
-      status: "info",
-      duration: 3000,
-    });
+  useEffect(() => {
+    if (!isAuthenticated || !gameId || !socket) return;
 
-    // Subscribe to player updates
-    const unsubscribe = subscribeToPlayerUpdates(gameId, (data) => {
+    joinGameRoom(gameId, user?.username || user?.email);
+
+    // Set up event listeners
+    const onUserJoined = (data: any) => {
       toast({
-        title: "Player updated",
-        content: `The player list has been updated: gameId: ${gameId}`,
+        title: "User joined",
+        content: `${data.username} joined the game`,
         status: "success",
       });
-      console.log("new user join");
+      // Refresh game data
       refetchGameData();
-    });
-
-    // Cleanup subscription when component unmounts
-    return () => {
-      unsubscribe();
     };
-  }, [
-    isAuthenticated,
-    gameId,
-    user,
-    navigate,
-    subscribeToPlayerUpdates,
-    toast,
-  ]);
+    const onUserLeft = (data: any) => {
+      toast({
+        title: "User left",
+        content: `${data.username} left the game`,
+        status: "info",
+      });
+      refetchGameData();
+    };
+    // Listen for player joined events
+    socket.on(SOCKET_EVENTS.USER_JOINED_ROOM, onUserJoined);
+    socket.on(SOCKET_EVENTS.USER_LEFT_ROOM, onUserLeft);
+
+    // Clean up event listeners when component unmounts
+    return () => {
+      socket.off(SOCKET_EVENTS.PLAYER_JOINED, onUserJoined);
+      leaveGameRoom(gameId, user?.username || user?.email);
+    };
+  }, [isAuthenticated, gameId, socket]);
+
+  // Update host status when game data changes
+  useEffect(() => {
+    if (gameData && user) {
+      const isCurrentUserHost = gameData.host_id === user.user_id;
+      setIsHost(isCurrentUserHost);
+
+      // Find host username
+      const hostPlayer = gameData.players?.find(
+        (player) => player.user_id === gameData.host_id
+      );
+      if (hostPlayer) {
+        setHostUsername(hostPlayer.username || "Unknown");
+      }
+    }
+  }, [gameData, user]);
 
   const startCountdown = () => {
-    console.log("starting countdown");
     setCountdown(10);
 
     const timer = setInterval(() => {
@@ -198,7 +196,6 @@ const GameLobby: React.FC = () => {
       </div>
     );
   }
-
   return (
     <div className="min-h-screen pb-12 text-white bg-gray-900">
       <div className="container px-6 py-8 mx-auto">

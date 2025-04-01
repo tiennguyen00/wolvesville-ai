@@ -1591,4 +1591,7 @@ class Game {
   }
 }
 
-module.exports = Game;
+// Export the Game class
+module.exports = {
+  Game,
+};

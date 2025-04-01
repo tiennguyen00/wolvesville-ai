@@ -3,8 +3,9 @@ const router = express.Router();
 const bcrypt = require("bcryptjs");
 const { pool } = require("../config/db");
 const auth = require("../middleware/auth");
-const Game = require("../models/Game");
+const { Game } = require("../models/game");
 const Chat = require("../models/Chat");
+const SOCKET_EVENTS = require("../../constants/socketEvents");
 
 // Test route to verify the router is working
 router.get("/test", (req, res) => {
@@ -59,11 +60,9 @@ router.post("/", auth, async (req, res) => {
       current_phase || "lobby"
     );
 
-    // Get the io instance
     const { io } = require("../index");
-
     // Emit socket event for game creation
-    io.of("/game").emit("create_game", {
+    io.of("/game").emit(SOCKET_EVENTS.CREATE_GAME, {
       game_id: game.game_id,
       host_id: userId,
       settings: {
@@ -121,7 +120,7 @@ router.post("/:id/join", auth, async (req, res) => {
       // Broadcast to game room that a new player joined
       io.of("/game")
         .to(`game:${id}`)
-        .emit("player_joined", {
+        .emit(SOCKET_EVENTS.PLAYER_JOINED, {
           userId,
           player: {
             user_id: userId,
@@ -132,7 +131,7 @@ router.post("/:id/join", auth, async (req, res) => {
 
       // Send updated player list to all clients
       const gameDetails = await Game.getGameDetails(id);
-      io.of("/game").to(`game:${id}`).emit("players_updated", {
+      io.of("/game").to(`game:${id}`).emit(SOCKET_EVENTS.PLAYERS_UPDATED, {
         players: gameDetails.players,
       });
     }
@@ -483,6 +482,16 @@ router.post("/:id/kick", auth, async (req, res) => {
     }
 
     const result = await Game.kickPlayer(id, hostUserId, target_user_id);
+
+    // Get the socket server instance
+    const io = req.app.get("io");
+    if (io) {
+      // Send updated player list to all clients
+      const gameDetails = await Game.getGameDetails(id);
+      io.of("/game").to(`game:${id}`).emit(SOCKET_EVENTS.PLAYERS_UPDATED, {
+        players: gameDetails.players,
+      });
+    }
 
     res.json({
       message: "Player kicked successfully",
