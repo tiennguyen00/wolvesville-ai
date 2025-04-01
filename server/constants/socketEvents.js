@@ -16,15 +16,12 @@ const SOCKET_EVENTS = {
   LEAVE_GAME_ROOM: "leave_game_room",
   USER_JOINED_ROOM: "user_joined_room",
   USER_LEFT_ROOM: "user_left_room",
-  ROOM_JOINED: "room_joined",
+  KICK_GAME_ROOM: "kick_game_room",
+  USER_WAS_KICKED: "user_was_kicked",
 
   // Game management
   CREATE_GAME: "create_game",
   GAME_CREATED: "game_created",
-  JOIN_GAME: "join_game",
-  JOIN_GAME_SUCCESS: "join_game_success",
-  LEAVE_GAME: "leave_game",
-  LEAVE_GAME_SUCCESS: "leave_game_success",
   START_GAME: "start_game",
   GAME_STARTED: "game_started",
 

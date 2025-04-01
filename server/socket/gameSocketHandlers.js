@@ -5,6 +5,9 @@ const SOCKET_EVENTS = require("../constants/socketEvents");
 // Map to store active games and their connected players
 const activeGames = new Map();
 
+// Add a way to store/lookup socket connections by userId
+const userSockets = new Map(); // Map userId -> socket
+
 // Setup game-related socket event handlers
 const setupGameSocketHandlers = (io) => {
   // Create a namespace for game-related events
@@ -24,6 +27,7 @@ const setupGameSocketHandlers = (io) => {
         userId = user_id;
         socket.emit(SOCKET_EVENTS.AUTHENTICATED, { success: true });
         // console.log(`User ${userId} authenticated on socket ${socket.id}`);
+        userSockets.set(data.user_id, socket);
       } catch (error) {
         console.error("Authentication error:", error);
         socket.emit(SOCKET_EVENTS.AUTHENTICATED, {
@@ -56,71 +60,10 @@ const setupGameSocketHandlers = (io) => {
           host_info,
         });
 
-        // Confirm room joined to host
-        socket.emit(SOCKET_EVENTS.ROOM_JOINED, {
-          game_id: gameId,
-          status: "success",
-        });
-
         console.log(`Game ${gameId} created by host ${host_info.user_id}`);
       } catch (error) {
         console.error("Error in game creation:", error);
         socket.emit(SOCKET_EVENTS.ERROR, { message: error.message });
-      }
-    });
-
-    // Join a game
-    socket.on(SOCKET_EVENTS.JOIN_GAME, async (data) => {
-      console.log("JOIN_GAME SOCKET HANDLER");
-      try {
-        const { game_id, password } = data;
-        const user_id = socket.user.user_id;
-
-        // Join the game using Game model
-        const result = await Game.joinGame(game_id, user_id, password);
-
-        // Get user info for broadcast
-        const userQuery = "SELECT username FROM users WHERE user_id = $1";
-        const {
-          rows: [user],
-        } = await pool.query(userQuery, [user_id]);
-
-        // Join the socket room for this game
-        socket.join(game_id);
-
-        // Emit success event to the client who joined
-        socket.emit(SOCKET_EVENTS.JOIN_GAME_SUCCESS, {
-          game_id,
-          player_id: result.player_id,
-        });
-
-        // Get updated player list
-        const playersQuery = `
-          SELECT u.user_id, u.username, pg.id as player_id
-          FROM player_games pg
-          JOIN users u ON pg.user_id = u.user_id
-          WHERE pg.game_id = $1
-          ORDER BY pg.created_at ASC`;
-        const { rows: players } = await pool.query(playersQuery, [game_id]);
-
-        // Broadcast to all clients in the game room
-        io.to(game_id).emit(SOCKET_EVENTS.PLAYER_JOINED, {
-          user_id,
-          username: user.username,
-          player_id: result.player_id,
-        });
-
-        // Update all clients with new player list
-        io.to(game_id).emit(SOCKET_EVENTS.PLAYERS_UPDATED, {
-          game_id,
-          players,
-        });
-      } catch (error) {
-        console.error("Error in join_game handler:", error);
-        socket.emit(SOCKET_EVENTS.ERROR, {
-          type: "join_game_error",
-          message: error.message,
-        });
       }
     });
 
@@ -292,61 +235,6 @@ const setupGameSocketHandlers = (io) => {
       }
     });
 
-    // Leave game
-    socket.on("leave_game", async (data) => {
-      console.log("LEAVE_GAME");
-      try {
-        const { game_id } = data;
-        const user_id = socket.user.user_id;
-
-        // Remove player from game in database
-        await pool.query(
-          "DELETE FROM player_games WHERE game_id = $1 AND user_id = $2",
-          [game_id, user_id]
-        );
-
-        // Record leave event
-        await pool.query(
-          `INSERT INTO game_events (game_id, event_type, event_data)
-           VALUES ($1, 'player_left', $2)`,
-          [game_id, JSON.stringify({ user_id })]
-        );
-
-        // Leave the socket room
-        socket.leave(game_id);
-
-        // Emit success event to the client who left
-        socket.emit("leave_game_success", { game_id });
-
-        // Get updated player list
-        const playersQuery = `
-          SELECT u.user_id, u.username, pg.id as player_id
-          FROM player_games pg
-          JOIN users u ON pg.user_id = u.user_id
-          WHERE pg.game_id = $1
-          ORDER BY pg.created_at ASC`;
-        const { rows: players } = await pool.query(playersQuery, [game_id]);
-
-        // Broadcast to remaining clients in the game room
-        io.to(game_id).emit("player_left", {
-          user_id,
-          game_id,
-        });
-
-        // Update all clients with new player list
-        io.to(game_id).emit(SOCKET_EVENTS.PLAYERS_UPDATED, {
-          game_id,
-          players,
-        });
-      } catch (error) {
-        console.error("Error in leave_game handler:", error);
-        socket.emit(SOCKET_EVENTS.ERROR, {
-          type: "leave_game_error",
-          message: error.message,
-        });
-      }
-    });
-
     // Handle disconnections
     socket.on("disconnect", async () => {
       console.log(`Socket disconnected: ${socket.id}`);
@@ -402,6 +290,29 @@ const setupGameSocketHandlers = (io) => {
       // the client will no longer receive messages or events sent to that room.
       socket.leave(`game:${gameId}`);
     });
+
+    // Handle leaving a specific game room
+    socket.on(
+      SOCKET_EVENTS.KICK_GAME_ROOM,
+      ({ gameId, targetUserId, targetUsername }) => {
+        if (!gameId || !targetUserId) return;
+
+        // Broadcast to everyone that user was kicked
+        io.to(`game:${gameId}`).emit(SOCKET_EVENTS.USER_WAS_KICKED, {
+          username: targetUsername,
+          user_id: targetUserId,
+          game_id: gameId,
+          timestamp: new Date(),
+        });
+
+        // Find the socket of the kicked user
+        const targetSocket = userSockets.get(targetUserId);
+        if (targetSocket) {
+          console.log("Kicking user from game", targetSocket);
+          targetSocket.leave(`game:${gameId}`);
+        }
+      }
+    );
   });
 
   return gameNamespace;

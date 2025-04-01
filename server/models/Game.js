@@ -744,6 +744,12 @@ class Game {
         targetUserId,
       ]);
 
+      const targetQuery = `
+        SELECT username FROM users
+        WHERE user_id = $1
+      `;
+      const targetInforResult = await client.query(targetQuery, [targetUserId]);
+
       if (playerResult.rows.length === 0) {
         throw new Error("Target player not found in this game");
       }
@@ -756,7 +762,7 @@ class Game {
         WHERE id = $1
         RETURNING id
       `;
-      const deleteResult = await client.query(deleteQuery, [playerId]);
+      await client.query(deleteQuery, [playerId]);
 
       // Record kick event
       await client.query(
@@ -776,7 +782,10 @@ class Game {
       );
 
       await client.query("COMMIT");
-      return { player_id: playerId };
+      return {
+        player_id: playerId,
+        player_username: targetInforResult.rows[0].username,
+      };
     } catch (error) {
       await client.query("ROLLBACK");
       console.error("Error kicking player:", error);

@@ -498,6 +498,7 @@ router.post("/:id/kick", auth, async (req, res) => {
     res.json({
       message: "Player kicked successfully",
       player_id: result.player_id,
+      player_username: result.player_username,
     });
   } catch (error) {
     console.error("Error kicking player:", error);

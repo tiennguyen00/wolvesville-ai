@@ -48,7 +48,7 @@ const GameLobby: React.FC = () => {
       return;
     }
     fetchRoles();
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (!isAuthenticated || !gameId || !socket) return;
@@ -63,7 +63,6 @@ const GameLobby: React.FC = () => {
     );
     // When a user joins the game, notify to all users on the room
     socket.on(SOCKET_EVENTS.USER_JOINED_ROOM, (data: any) => {
-      console.log("user joined", data);
       toast({
         title: "User joined",
         content: `${data?.username} joined the game`,
@@ -79,17 +78,20 @@ const GameLobby: React.FC = () => {
       });
     });
 
+    // When a player is kicked from the game, notify to all users on the room
+    socket.on(SOCKET_EVENTS.USER_WAS_KICKED, (data: any) => {
+      console.log("user_was_kicked", data);
+      toast({
+        title: "Player was kicked",
+        content: `${data?.username} was kicked from the game`,
+        status: "info",
+      });
+    });
+
     return () => {
       socket.off(SOCKET_EVENTS.USER_JOINED_ROOM);
       socket.off(SOCKET_EVENTS.USER_LEFT_ROOM);
-      unsubscribeFromPlayerUpdates(
-        gameId,
-        user?.username || user?.user_id || "",
-        (data) => {
-          // Refresh game data
-          refetchGameData();
-        }
-      );
+      socket.off(SOCKET_EVENTS.USER_WAS_KICKED);
     };
   }, [isAuthenticated, gameId, socket]);
 
@@ -124,10 +126,6 @@ const GameLobby: React.FC = () => {
     }, 1000);
 
     return () => clearInterval(timer);
-  };
-
-  const cancelCountdown = () => {
-    setCountdown(null);
   };
 
   const startGame = async () => {
@@ -165,7 +163,13 @@ const GameLobby: React.FC = () => {
         return;
       }
 
-      await gameService.kickPlayer(gameId, playerId);
+      const result = await gameService.kickPlayer(gameId, playerId);
+      console.log("result", result);
+      socket?.emit(SOCKET_EVENTS.KICK_GAME_ROOM, {
+        gameId,
+        targetUserId: result.player_id,
+        targetUsername: result.player_username,
+      });
     } catch (err) {
       console.error("Error kicking player:", err);
       setError("Failed to kick player. Please try again.");
@@ -249,7 +253,7 @@ const GameLobby: React.FC = () => {
 
             {isHost && countdown !== null && (
               <button
-                onClick={cancelCountdown}
+                onClick={() => setCountdown(null)}
                 className="flex items-center justify-center btn-secondary pixel-button"
               >
                 <svg

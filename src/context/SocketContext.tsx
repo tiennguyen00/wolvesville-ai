@@ -58,11 +58,9 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({
     callback: (data: PlayersUpdatedData) => void
   ) => {
     socket?.emit(SOCKET_EVENTS.JOIN_GAME_ROOM, { gameId, username });
-    console.log("emit event", gameId, username);
-    // Listen for updates
-    socket?.on(SOCKET_EVENTS.PLAYERS_UPDATED, (data) =>
-      handlePlayersUpdated(data, callback)
-    );
+    // socket?.on(SOCKET_EVENTS.PLAYERS_UPDATED, (data) =>
+    //   handlePlayersUpdated(data, callback)
+    // );
   };
 
   const unsubscribeFromPlayerUpdates = (
@@ -71,10 +69,11 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({
     callback: (data: PlayersUpdatedData) => void
   ) => {
     if (socket) {
+      console.log("unsubscribing from player updates", gameId, username);
       socket.emit(SOCKET_EVENTS.LEAVE_GAME_ROOM, { gameId, username });
-      socket.off(SOCKET_EVENTS.PLAYERS_UPDATED, (data) =>
-        handlePlayersUpdated(data, callback)
-      );
+      // socket.off(SOCKET_EVENTS.PLAYERS_UPDATED, (data) =>
+      //   handlePlayersUpdated(data, callback)
+      // );
     }
   };
   useEffect(() => {
