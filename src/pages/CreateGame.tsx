@@ -85,6 +85,7 @@ const CreateGame: React.FC = () => {
       const gameData = {
         game_mode: formData.game_mode,
         host_id: user?.user_id,
+        host_username: user?.username,
         status: "lobby" as GameStatusType,
         current_phase: "lobby" as GamePhaseType,
         max_players: formData.max_players,
@@ -100,7 +101,6 @@ const CreateGame: React.FC = () => {
       };
 
       const newGame = await gameService.createGame(gameData);
-      console.log(newGame);
       navigate(`/game/lobby/${newGame.game_id}`);
     } catch (err) {
       console.error("Error creating game:", err);

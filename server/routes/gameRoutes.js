@@ -43,7 +43,8 @@ router.post("/", auth, async (req, res) => {
       current_phase,
     } = req.body;
 
-    const userId = req.user.id;
+    const hostId = req.user.id,
+      hostName = req.body.host_username;
 
     // Basic validation
     if (!game_mode) {
@@ -51,7 +52,7 @@ router.post("/", auth, async (req, res) => {
     }
 
     const game = await Game.createGame(
-      userId,
+      hostId,
       game_mode,
       max_players,
       game_password,
@@ -64,7 +65,8 @@ router.post("/", auth, async (req, res) => {
     // Emit socket event for game creation
     io.of("/game").emit(SOCKET_EVENTS.CREATE_GAME, {
       game_id: game.game_id,
-      host_id: userId,
+      host_id: hostId,
+      host_username: hostName,
       settings: {
         game_mode,
         max_players,

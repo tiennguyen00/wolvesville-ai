@@ -377,26 +377,24 @@ const setupGameSocketHandlers = (io) => {
     });
 
     // Handle joining a specific game room
-    socket.on(SOCKET_EVENTS.JOIN_GAME_ROOM, ({ gameId, playerId }) => {
+    socket.on(SOCKET_EVENTS.JOIN_GAME_ROOM, ({ gameId, username }) => {
       if (!gameId) return;
-
-      console.log(`User ${playerId} joining game room: game:${gameId}`);
       socket.join(`game:${gameId}`);
 
       // Optionally notify the room that someone joined (for debugging)
       socket.to(`game:${gameId}`).emit(SOCKET_EVENTS.USER_JOINED_ROOM, {
-        player_id: playerId,
+        username,
         game_id: gameId,
         timestamp: new Date(),
       });
     });
 
     // Handle leaving a specific game room
-    socket.on(SOCKET_EVENTS.LEAVE_GAME_ROOM, ({ gameId, playerId }) => {
+    socket.on(SOCKET_EVENTS.LEAVE_GAME_ROOM, ({ gameId, username }) => {
       if (!gameId) return;
       // Optionally notify the room that someone left (for debugging)
       socket.to(`game:${gameId}`).emit(SOCKET_EVENTS.USER_LEFT_ROOM, {
-        player_id: playerId,
+        username,
         game_id: gameId,
         timestamp: new Date(),
       });

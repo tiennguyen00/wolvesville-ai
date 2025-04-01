@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import gameService from "../services/gameService";
-import { GamePlayer, Role } from "../services/gameService";
+import { Role } from "../services/gameService";
 import { useToast } from "../hooks/useToast";
 import { useSocket } from "../context/SocketContext";
 import { useQuery } from "@tanstack/react-query";
@@ -53,28 +53,43 @@ const GameLobby: React.FC = () => {
   useEffect(() => {
     if (!isAuthenticated || !gameId || !socket) return;
 
-    subscribeToPlayerUpdates(gameId, user?.user_id || "", (data) => {
-      // Refresh game data
-      refetchGameData();
-    });
-    // Listen for player joined events
+    subscribeToPlayerUpdates(
+      gameId,
+      user?.username || user?.user_id || "",
+      (data) => {
+        // Refresh game data
+        refetchGameData();
+      }
+    );
+    // When a user joins the game, notify to all users on the room
     socket.on(SOCKET_EVENTS.USER_JOINED_ROOM, (data: any) => {
+      console.log("user joined", data);
       toast({
         title: "User joined",
-        content: `${data?.player_id} joined the game`,
+        content: `${data?.username} joined the game`,
         status: "success",
       });
     });
+    // When a user lefts the game, notify to all users on the room
     socket.on(SOCKET_EVENTS.USER_LEFT_ROOM, (data: any) => {
       toast({
         title: "User left",
-        content: `${data?.player_id} left the game`,
+        content: `${data?.username} left the game`,
         status: "info",
       });
     });
 
     return () => {
-      unsubscribeFromPlayerUpdates(gameId, user?.user_id || "");
+      socket.off(SOCKET_EVENTS.USER_JOINED_ROOM);
+      socket.off(SOCKET_EVENTS.USER_LEFT_ROOM);
+      unsubscribeFromPlayerUpdates(
+        gameId,
+        user?.username || user?.user_id || "",
+        (data) => {
+          // Refresh game data
+          refetchGameData();
+        }
+      );
     };
   }, [isAuthenticated, gameId, socket]);
 
