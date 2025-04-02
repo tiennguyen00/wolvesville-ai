@@ -80,7 +80,8 @@ const GameLobby: React.FC = () => {
 
     // When a player is kicked from the game, notify to all users on the room
     socket.on(SOCKET_EVENTS.USER_WAS_KICKED, (data: any) => {
-      console.log("user_was_kicked", data);
+      refetchGameData();
+      if (data.user_id === user?.user_id) navigate("/games");
       toast({
         title: "Player was kicked",
         content: `${data?.username} was kicked from the game`,
@@ -164,10 +165,9 @@ const GameLobby: React.FC = () => {
       }
 
       const result = await gameService.kickPlayer(gameId, playerId);
-      console.log("result", result);
       socket?.emit(SOCKET_EVENTS.KICK_GAME_ROOM, {
         gameId,
-        targetUserId: result.player_id,
+        targetUserId: playerId,
         targetUsername: result.player_username,
       });
     } catch (err) {

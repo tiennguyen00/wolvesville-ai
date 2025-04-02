@@ -14,26 +14,19 @@ const setupGameSocketHandlers = (io) => {
   const gameNamespace = io.of("/game");
 
   gameNamespace.on(SOCKET_EVENTS.CONNECT, (socket) => {
-    console.log(`New connection to game namespace: ${socket.id}`);
-
     // Track user data
     let userId = null;
     let gameId = null;
 
     // Authenticate user (should be called first)
-    socket.on("authenticate", async (data) => {
+    socket.on(SOCKET_EVENTS.AUTHENTICATED, async (data) => {
       try {
         const { user_id, token } = data;
         userId = user_id;
-        socket.emit(SOCKET_EVENTS.AUTHENTICATED, { success: true });
-        // console.log(`User ${userId} authenticated on socket ${socket.id}`);
+        console.log(`User ${userId} authenticated on socket ${socket.id}`);
         userSockets.set(data.user_id, socket);
       } catch (error) {
-        console.error("Authentication error:", error);
-        socket.emit(SOCKET_EVENTS.AUTHENTICATED, {
-          success: false,
-          error: error.message,
-        });
+        console.error("Connection error:", error);
       }
     });
 
@@ -298,7 +291,7 @@ const setupGameSocketHandlers = (io) => {
         if (!gameId || !targetUserId) return;
 
         // Broadcast to everyone that user was kicked
-        io.to(`game:${gameId}`).emit(SOCKET_EVENTS.USER_WAS_KICKED, {
+        gameNamespace.to(`game:${gameId}`).emit(SOCKET_EVENTS.USER_WAS_KICKED, {
           username: targetUsername,
           user_id: targetUserId,
           game_id: gameId,
@@ -308,7 +301,6 @@ const setupGameSocketHandlers = (io) => {
         // Find the socket of the kicked user
         const targetSocket = userSockets.get(targetUserId);
         if (targetSocket) {
-          console.log("Kicking user from game", targetSocket);
           targetSocket.leave(`game:${gameId}`);
         }
       }

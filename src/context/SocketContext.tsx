@@ -37,7 +37,7 @@ export const useSocket = () => {
 export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const [socket, setSocket] = useState<Socket | null>(null);
   const { toast } = useToast();
 
@@ -101,6 +101,12 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({
     newSocket.on(SOCKET_EVENTS.CONNECT, () => {
       console.log("Socket connected:", newSocket.connected);
       console.log("Socket ID:", newSocket.id);
+      if (isAuthenticated) {
+        newSocket.emit(SOCKET_EVENTS.AUTHENTICATED, {
+          user_id: user?.user_id,
+          token: localStorage.getItem("token"),
+        });
+      }
     });
 
     newSocket.on(SOCKET_EVENTS.DISCONNECT, () => {
