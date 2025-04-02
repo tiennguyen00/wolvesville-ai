@@ -293,6 +293,20 @@ const gameService = {
     const response = await api.get(`/api/games/${gameId}/results`);
     return response.data.results;
   },
+
+  // Transfer host status to another player (host only)
+  transferHost: async (gameId: string, newHostId: string) => {
+    const response = await api.post(`/api/games/${gameId}/transfer-host`, {
+      new_host_id: newHostId,
+    });
+    return response.data;
+  },
+
+  // End the game (host only)
+  endGame: async (gameId: string) => {
+    const response = await api.post(`/api/games/${gameId}/end`);
+    return response.data;
+  },
 };
 
 export default gameService;

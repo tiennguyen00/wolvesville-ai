@@ -21,6 +21,8 @@ const GameLobby: React.FC = () => {
   const [countdown, setCountdown] = useState<number | null>(null);
   const [isHost, setIsHost] = useState(false);
   const [hostUsername, setHostUsername] = useState<string>("");
+  const [showTransferHostModal, setShowTransferHostModal] = useState(false);
+  const [selectedNewHost, setSelectedNewHost] = useState<string | null>(null);
 
   const {
     data: gameData,
@@ -89,10 +91,50 @@ const GameLobby: React.FC = () => {
       });
     });
 
+    // When host status is transferred to another player
+    socket.on(SOCKET_EVENTS.HOST_TRANSFERRED, (data: any) => {
+      refetchGameData();
+
+      const wasIHost = data.previous_host_id === user?.user_id;
+      const amINewHost = data.new_host_id === user?.user_id;
+
+      if (wasIHost) {
+        toast({
+          title: "Host Transfer",
+          content: `You transferred host status to ${data?.new_host_username}`,
+          status: "info",
+        });
+      } else if (amINewHost) {
+        toast({
+          title: "Host Transfer",
+          content: "You are now the host of this game",
+          status: "success",
+        });
+      } else {
+        toast({
+          title: "Host Transfer",
+          content: `${data?.new_host_username} is now the host`,
+          status: "info",
+        });
+      }
+    });
+
+    // When the game is ended by the host
+    socket.on(SOCKET_EVENTS.GAME_ENDED, (data: any) => {
+      toast({
+        title: "Game Ended",
+        content: "The game has been ended by the host",
+        status: "warning",
+      });
+      navigate("/games");
+    });
+
     return () => {
       socket.off(SOCKET_EVENTS.USER_JOINED_ROOM);
       socket.off(SOCKET_EVENTS.USER_LEFT_ROOM);
       socket.off(SOCKET_EVENTS.USER_WAS_KICKED);
+      socket.off(SOCKET_EVENTS.HOST_TRANSFERRED);
+      socket.off(SOCKET_EVENTS.GAME_ENDED);
     };
   }, [isAuthenticated, gameId, socket]);
 
@@ -152,6 +194,59 @@ const GameLobby: React.FC = () => {
     } catch (err) {
       console.error("Error leaving game:", err);
       setError("Failed to leave the game. Please try again.");
+    }
+  };
+
+  const handleEndGame = async () => {
+    if (!gameId) return;
+
+    try {
+      // Show confirmation dialog
+      if (!window.confirm("Are you sure you want to end this game?")) {
+        return;
+      }
+
+      await gameService.endGame(gameId);
+      toast({
+        title: "Game ended",
+        content: "The game has been ended successfully",
+        status: "info",
+      });
+      navigate("/games");
+    } catch (err) {
+      console.error("Error ending game:", err);
+      setError("Failed to end the game. Please try again.");
+      toast({
+        title: "Error",
+        content: "Failed to end the game",
+        status: "error",
+      });
+    }
+  };
+
+  const handleTransferHost = async () => {
+    if (!gameId || !selectedNewHost) return;
+
+    try {
+      await gameService.transferHost(gameId, selectedNewHost);
+      setShowTransferHostModal(false);
+      setSelectedNewHost(null);
+
+      toast({
+        title: "Host transferred",
+        content: "Host status has been transferred successfully",
+        status: "success",
+      });
+
+      refetchGameData();
+    } catch (err) {
+      console.error("Error transferring host:", err);
+      setError("Failed to transfer host. Please try again.");
+      toast({
+        title: "Error",
+        content: "Failed to transfer host",
+        status: "error",
+      });
     }
   };
 
@@ -249,6 +344,52 @@ const GameLobby: React.FC = () => {
                 </svg>
                 Start Game
               </button>
+            )}
+
+            {isHost && countdown === null && (
+              <>
+                <button
+                  onClick={() => setShowTransferHostModal(true)}
+                  className="flex items-center justify-center btn-secondary pixel-button"
+                >
+                  <svg
+                    className="w-5 h-5 mr-2"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"
+                    ></path>
+                  </svg>
+                  Transfer Host
+                </button>
+
+                <button
+                  onClick={handleEndGame}
+                  className="flex items-center justify-center text-red-400 btn-secondary hover:text-red-300 pixel-button"
+                >
+                  <svg
+                    className="w-5 h-5 mr-2"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M6 18L18 6M6 6l12 12"
+                    ></path>
+                  </svg>
+                  End Game
+                </button>
+              </>
             )}
 
             {isHost && countdown !== null && (
@@ -479,6 +620,61 @@ const GameLobby: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Transfer Host Modal */}
+      {showTransferHostModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="w-full max-w-md p-6 bg-gray-800 rounded-lg shadow-lg pixel-container">
+            <h2 className="mb-4 text-xl font-bold text-white pixel-text">
+              Transfer Host
+            </h2>
+            <p className="mb-4 text-gray-300">
+              Select a player to transfer host status to:
+            </p>
+
+            <div className="mb-4 space-y-2 overflow-y-auto max-h-60">
+              {gameData?.players
+                ?.filter((player) => player.user_id !== user?.user_id)
+                .map((player) => (
+                  <div
+                    key={player.id}
+                    className={`p-3 rounded-lg flex items-center cursor-pointer ${
+                      selectedNewHost === player.user_id
+                        ? "bg-purple-900 border border-purple-500"
+                        : "bg-gray-700 hover:bg-gray-600"
+                    }`}
+                    onClick={() => setSelectedNewHost(player.user_id)}
+                  >
+                    <div className="flex items-center justify-center w-8 h-8 font-bold bg-purple-800 rounded-full">
+                      {player.username?.charAt(0).toUpperCase() || "?"}
+                    </div>
+                    <div className="ml-3 font-medium">{player.username}</div>
+                  </div>
+                ))}
+            </div>
+
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setShowTransferHostModal(false);
+                  setSelectedNewHost(null);
+                }}
+                className="btn-secondary pixel-button"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleTransferHost}
+                className="btn-primary pixel-button"
+                disabled={!selectedNewHost}
+                style={{ opacity: !selectedNewHost ? 0.5 : 1 }}
+              >
+                Transfer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

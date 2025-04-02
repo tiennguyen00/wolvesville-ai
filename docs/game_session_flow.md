@@ -92,7 +92,7 @@ sequenceDiagram
     participant Players as Players
 
     Host->>API: Various Control Actions
-    Note over Host,API: Start Game, Kick Player, Update Settings
+    Note over Host,API: Start Game, Kick Player, Update Settings, Transfer Host, End Game
 
     API->>Auth: Verify Host Permissions
     Auth-->>API: Host Verified
@@ -115,6 +115,19 @@ sequenceDiagram
         API->>Socket: Broadcast Settings Update
         Socket-->>Players: Settings Updated Event
         Socket-->>Host: Update Confirmed
+    else Transfer Host
+        API->>DB: Update Game Host
+        DB-->>API: Host Updated
+        API->>Socket: Broadcast Host Transfer
+        Socket-->>Players: Host Updated Event
+        Socket-->>Host: Transfer Confirmed
+        Socket-->>Players: New Host Notification
+    else End Game
+        API->>DB: Set Game as Abandoned
+        DB-->>API: Game Ended
+        API->>Socket: Broadcast Game Ended
+        Socket-->>Players: Game Ended Event
+        Socket-->>Host: End Confirmed
     end
 ```
 
@@ -212,6 +225,13 @@ As a host, you can:
 - Kick inactive or disruptive players
 - Update game settings before start
 - Transfer host status to another player
+  - Select any player in the lobby to make them the new host
+  - This is useful when the current host needs to leave but wants the game to continue
+  - The new host will have full control over the game
+- End the game at any time
+  - This will immediately terminate the game session
+  - All players will be returned to the game list
+  - The game will be marked as abandoned
 
 ### Player Actions
 

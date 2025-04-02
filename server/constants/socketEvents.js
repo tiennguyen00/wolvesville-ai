@@ -41,6 +41,9 @@ const SOCKET_EVENTS = {
   VOTE_CAST: "vote_cast",
   ABILITY_USED: "ability_used",
 
+  // Host management
+  HOST_TRANSFERRED: "host_transferred",
+
   // Game completion
   GAME_ENDED: "game_ended",
 };

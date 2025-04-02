@@ -781,4 +781,138 @@ router.post("/:id/ready", auth, async (req, res) => {
   }
 });
 
+// @route   POST /api/games/:id/transfer-host
+// @desc    Transfer host status to another player
+// @access  Private
+router.post("/:id/transfer-host", auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { new_host_id } = req.body;
+    const currentHostId = req.user.id;
+
+    // Basic validation
+    if (!new_host_id) {
+      return res.status(400).json({ message: "New host ID is required" });
+    }
+
+    // Get game details
+    const game = await Game.getGameDetails(id);
+    if (!game) {
+      return res.status(404).json({ message: "Game not found" });
+    }
+
+    // Verify the current user is the host
+    if (game.host_id !== currentHostId) {
+      return res
+        .status(403)
+        .json({ message: "Only the host can transfer host status" });
+    }
+
+    // Verify the new host is in the game
+    const newHostPlayer = game.players.find(
+      (player) => player.user_id === new_host_id
+    );
+    if (!newHostPlayer) {
+      return res
+        .status(404)
+        .json({ message: "New host player not found in this game" });
+    }
+
+    // Update host ID in database
+    const updateQuery = `
+      UPDATE games
+      SET host_id = $1
+      WHERE game_id = $2
+      RETURNING *
+    `;
+    await pool.query(updateQuery, [new_host_id, id]);
+
+    // Record game event
+    await Game.recordGameEvent(id, "host_transferred", {
+      previous_host_id: currentHostId,
+      new_host_id: new_host_id,
+    });
+
+    // Get the socket server instance
+    const { io } = require("../index");
+    if (io) {
+      // Notify all players in the game
+      io.of("/game").to(`game:${id}`).emit(SOCKET_EVENTS.HOST_TRANSFERRED, {
+        previous_host_id: currentHostId,
+        new_host_id: new_host_id,
+        new_host_username: newHostPlayer.username,
+      });
+    }
+
+    res.json({
+      message: "Host status transferred successfully",
+      new_host_id,
+      new_host_username: newHostPlayer.username,
+    });
+  } catch (error) {
+    console.error("Error transferring host:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+// @route   POST /api/games/:id/end
+// @desc    End a game (host only)
+// @access  Private
+router.post("/:id/end", auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const hostId = req.user.id;
+
+    // Get game details
+    const game = await Game.getGameDetails(id);
+    if (!game) {
+      return res.status(404).json({ message: "Game not found" });
+    }
+
+    // Verify the current user is the host
+    if (game.host_id !== hostId) {
+      return res
+        .status(403)
+        .json({ message: "Only the host can end the game" });
+    }
+
+    // Update game status in database
+    const updateQuery = `
+      UPDATE games
+      SET status = 'abandoned', ended_at = NOW()
+      WHERE game_id = $1
+      RETURNING *
+    `;
+    const { rows } = await pool.query(updateQuery, [id]);
+    const updatedGame = rows[0];
+
+    // Record game event
+    await Game.recordGameEvent(id, "game_ended", {
+      ended_by: hostId,
+      reason: "host_terminated",
+    });
+
+    // Get the socket server instance
+    const { io } = require("../index");
+    if (io) {
+      // Notify all players in the game
+      io.of("/game").to(`game:${id}`).emit(SOCKET_EVENTS.GAME_ENDED, {
+        game_id: id,
+        ended_by: hostId,
+        reason: "host_terminated",
+      });
+    }
+
+    res.json({
+      message: "Game ended successfully",
+      game_id: id,
+      status: updatedGame.status,
+      ended_at: updatedGame.ended_at,
+    });
+  } catch (error) {
+    console.error("Error ending game:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
 module.exports = router;
