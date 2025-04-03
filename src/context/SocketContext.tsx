@@ -58,9 +58,6 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({
     callback: (data: PlayersUpdatedData) => void
   ) => {
     socket?.emit(SOCKET_EVENTS.JOIN_GAME_ROOM, { gameId, username });
-    // socket?.on(SOCKET_EVENTS.PLAYERS_UPDATED, (data) =>
-    //   handlePlayersUpdated(data, callback)
-    // );
   };
 
   const unsubscribeFromPlayerUpdates = (

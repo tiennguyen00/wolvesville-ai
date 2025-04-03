@@ -1,5 +1,5 @@
 const { pool } = require("../config/db");
-const { Game } = require("../models/game");
+const { Game } = require("../models/Game");
 const SOCKET_EVENTS = require("../constants/socketEvents");
 
 // Map to store active games and their connected players
@@ -229,28 +229,46 @@ const setupGameSocketHandlers = (io) => {
     });
 
     // Handle disconnections
-    socket.on("disconnect", async () => {
-      console.log(`Socket disconnected: ${socket.id}`);
-
+    socket.on(SOCKET_EVENTS.DISCONNECT, async () => {
+      console.log(
+        `DISCONNECT EVENT - User: ${userId}, Game: ${gameId}, Socket: ${socket.id}`
+      );
       try {
         if (gameId && userId) {
-          // Get current game phase and day number
-          const gameResult = await pool.query(
-            `SELECT current_phase FROM games WHERE game_id = $1`,
-            [gameId]
+          // Get username of disconnected user
+          const userResult = await pool.query(
+            `SELECT username FROM users WHERE user_id = $1`,
+            [userId]
           );
+
+          const username =
+            userResult.rows.length > 0
+              ? userResult.rows[0].username
+              : "Unknown";
 
           // Record disconnect event
           await pool.query(
             `INSERT INTO game_events (game_id, event_type, event_data)
              VALUES ($1, 'player_disconnected', $2)`,
-            [gameId, JSON.stringify({ user_id: userId })]
+            [gameId, JSON.stringify({ user_id: userId, username })]
           );
 
-          // Notify all clients in the room
+          // Notify all clients in the room with more complete data
           socket.to(`game:${gameId}`).emit(SOCKET_EVENTS.PLAYER_DISCONNECTED, {
             userId,
+            username,
+            game_id: gameId,
+            timestamp: new Date(),
           });
+        } else {
+          console.log(
+            `Incomplete disconnect data - userId: ${userId}, gameId: ${gameId}`
+          );
+        }
+
+        // Clean up user socket mapping
+        if (userId) {
+          userSockets.delete(userId);
         }
       } catch (error) {
         console.error("Error handling disconnect:", error);
@@ -258,17 +276,27 @@ const setupGameSocketHandlers = (io) => {
     });
 
     // Handle joining a specific game room
-    socket.on(SOCKET_EVENTS.JOIN_GAME_ROOM, ({ gameId, username }) => {
-      if (!gameId) return;
-      socket.join(`game:${gameId}`);
+    socket.on(
+      SOCKET_EVENTS.JOIN_GAME_ROOM,
+      ({ gameId: roomGameId, username }) => {
+        if (!roomGameId) return;
 
-      // Optionally notify the room that someone joined (for debugging)
-      socket.to(`game:${gameId}`).emit(SOCKET_EVENTS.USER_JOINED_ROOM, {
-        username,
-        game_id: gameId,
-        timestamp: new Date(),
-      });
-    });
+        // Store gameId in the socket object for disconnect handling
+        gameId = roomGameId;
+        console.log(`User ${userId} joining game room: ${gameId}`);
+
+        // Join the socket room
+        socket.join(`game:${roomGameId}`);
+
+        // Emit user joined event - the server will handle reconnection separately through the HTTP joinGame API
+        socket.to(`game:${roomGameId}`).emit(SOCKET_EVENTS.USER_JOINED_ROOM, {
+          username,
+          user_id: userId,
+          game_id: roomGameId,
+          timestamp: new Date(),
+        });
+      }
+    );
 
     // Handle leaving a specific game room
     socket.on(SOCKET_EVENTS.LEAVE_GAME_ROOM, ({ gameId, username }) => {

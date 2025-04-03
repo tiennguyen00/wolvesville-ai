@@ -4,9 +4,21 @@ import { useAuth } from "../context/AuthContext";
 import gameService from "../services/gameService";
 import { Role } from "../services/gameService";
 import { useToast } from "../hooks/useToast";
-import { useSocket } from "../context/SocketContext";
 import { useQuery } from "@tanstack/react-query";
 import SOCKET_EVENTS from "../constants/socketEvents";
+import { useSocket } from "../context/SocketContext";
+
+// Extend gameService with the new method
+const extendedGameService = {
+  ...gameService,
+  handlePlayerTimeout: async (gameId: string, userId: string) => {
+    const response = await gameService.performAction(gameId, {
+      action_type: "timeout",
+      target_id: userId,
+    });
+    return response;
+  },
+};
 
 const GameLobby: React.FC = () => {
   const { gameId } = useParams<{ gameId: string }>();
@@ -23,6 +35,12 @@ const GameLobby: React.FC = () => {
   const [hostUsername, setHostUsername] = useState<string>("");
   const [showTransferHostModal, setShowTransferHostModal] = useState(false);
   const [selectedNewHost, setSelectedNewHost] = useState<string | null>(null);
+  const [disconnectedPlayers, setDisconnectedPlayers] = useState<
+    Record<string, number>
+  >({});
+  const [reconnectionTimers, setReconnectionTimers] = useState<
+    Record<string, NodeJS.Timeout>
+  >({});
 
   const {
     data: gameData,
@@ -45,25 +63,17 @@ const GameLobby: React.FC = () => {
   };
 
   useEffect(() => {
-    if (!isAuthenticated) {
-      navigate("/login");
-      return;
-    }
-    fetchRoles();
-  }, [isAuthenticated]);
-
-  useEffect(() => {
     if (!isAuthenticated || !gameId || !socket) return;
 
     subscribeToPlayerUpdates(
       gameId,
       user?.username || user?.user_id || "",
       (data) => {
-        // Refresh game data
         refetchGameData();
       }
     );
-    // When a user joins the game, notify to all users on the room
+
+    // When a user joins the game room, notify to all users on the room
     socket.on(SOCKET_EVENTS.USER_JOINED_ROOM, (data: any) => {
       toast({
         title: "User joined",
@@ -71,6 +81,7 @@ const GameLobby: React.FC = () => {
         status: "success",
       });
     });
+
     // When a user lefts the game, notify to all users on the room
     socket.on(SOCKET_EVENTS.USER_LEFT_ROOM, (data: any) => {
       toast({
@@ -129,14 +140,115 @@ const GameLobby: React.FC = () => {
       navigate("/games");
     });
 
+    // When a user temporarily disconnects from the game lobby
+    socket.on(SOCKET_EVENTS.PLAYER_DISCONNECTED, (data: any) => {
+      // Get the user_id and username from the data (server now sends both)
+      const userId = data.userId;
+      let username = data.username || "Unknown player";
+
+      // If we don't have user info, try to find it in gameData
+      if (!username || username === "Unknown player") {
+        const disconnectedPlayer = gameData?.players?.find(
+          (player) => player.user_id === userId
+        );
+
+        if (disconnectedPlayer?.username) {
+          username = disconnectedPlayer.username;
+        }
+      }
+
+      if (!userId) {
+        console.error("Invalid disconnect data - missing userId", data);
+        return;
+      }
+
+      // Update disconnected players state
+      setDisconnectedPlayers((prev) => ({
+        ...prev,
+        [userId]: Date.now(),
+      }));
+
+      toast({
+        title: "Player Disconnected",
+        content: `${username} has disconnected. Waiting for reconnection...`,
+        status: "warning",
+      });
+
+      // Start a reconnection timer for this player (2 minute timeout)
+      const timeout = setTimeout(() => {
+        handlePlayerDisconnectTimeout(userId, username);
+      }, 120000); // 2 minutes
+
+      setReconnectionTimers((prev) => ({
+        ...prev,
+        [userId]: timeout,
+      }));
+    });
+
+    // When a user reconnects to the game lobby
+    socket.on(SOCKET_EVENTS.PLAYER_RECONNECTED, (data: any) => {
+      console.log("PLAYER RECONNECTED", data);
+      const { user_id, username } = data;
+
+      // Check if this was a disconnected player
+      if (disconnectedPlayers[user_id]) {
+        // Clear reconnection timer
+        if (reconnectionTimers[user_id]) {
+          clearTimeout(reconnectionTimers[user_id]);
+          setReconnectionTimers((prev) => {
+            const newTimers = { ...prev };
+            delete newTimers[user_id];
+            return newTimers;
+          });
+        }
+
+        // Remove from disconnected players
+        setDisconnectedPlayers((prev) => {
+          const newDisconnected = { ...prev };
+          delete newDisconnected[user_id];
+          return newDisconnected;
+        });
+
+        toast({
+          title: "Player Reconnected",
+          content: `${username} has reconnected to the game`,
+          status: "success",
+        });
+      } else {
+        // Handle case where we didn't know they were disconnected
+        // (e.g., client just loaded and received a reconnection event)
+        toast({
+          title: "Player Reconnected",
+          content: `${username} has reconnected to the game`,
+          status: "info",
+        });
+      }
+
+      // Refresh game data to ensure UI is updated
+      refetchGameData();
+    });
+
     return () => {
       socket.off(SOCKET_EVENTS.USER_JOINED_ROOM);
       socket.off(SOCKET_EVENTS.USER_LEFT_ROOM);
       socket.off(SOCKET_EVENTS.USER_WAS_KICKED);
       socket.off(SOCKET_EVENTS.HOST_TRANSFERRED);
       socket.off(SOCKET_EVENTS.GAME_ENDED);
+      socket.off(SOCKET_EVENTS.PLAYER_DISCONNECTED);
+      socket.off(SOCKET_EVENTS.PLAYER_RECONNECTED);
+
+      // Clear all timers on component unmount
+      Object.values(reconnectionTimers).forEach((timer) => clearTimeout(timer));
+
+      unsubscribeFromPlayerUpdates(
+        gameId || "",
+        user?.username || user?.user_id || "",
+        (data) => {
+          refetchGameData();
+        }
+      );
     };
-  }, [isAuthenticated, gameId, socket]);
+  }, [isAuthenticated, gameId, socket, disconnectedPlayers]);
 
   // Update host status when game data changes
   useEffect(() => {
@@ -268,6 +380,45 @@ const GameLobby: React.FC = () => {
     } catch (err) {
       console.error("Error kicking player:", err);
       setError("Failed to kick player. Please try again.");
+    }
+  };
+
+  // Handler for player disconnect timeout
+  const handlePlayerDisconnectTimeout = async (
+    userId: string,
+    username: string
+  ) => {
+    try {
+      // Remove the player from disconnected players list
+      setDisconnectedPlayers((prev) => {
+        const newDisconnected = { ...prev };
+        delete newDisconnected[userId];
+        return newDisconnected;
+      });
+
+      // Clean up the timer reference
+      setReconnectionTimers((prev) => {
+        const newTimers = { ...prev };
+        delete newTimers[userId];
+        return newTimers;
+      });
+
+      // Only attempt to remove if this is still the host and player hasn't already been removed
+      if (isHost && gameData?.players?.some((p) => p.user_id === userId)) {
+        // Call API to remove timed-out player
+        await extendedGameService.handlePlayerTimeout(gameId || "", userId);
+
+        toast({
+          title: "Player Removed",
+          content: `${username} has been removed due to connection timeout`,
+          status: "info",
+        });
+
+        // Refresh game data
+        refetchGameData();
+      }
+    } catch (err) {
+      console.error("Error handling player disconnect timeout:", err);
     }
   };
 
@@ -436,7 +587,6 @@ const GameLobby: React.FC = () => {
                 Game starting in {countdown}s
               </div>
             )}
-            `
             {!isHost && (
               <button
                 onClick={leaveGame}
@@ -446,7 +596,6 @@ const GameLobby: React.FC = () => {
               </button>
             )}
           </div>
-          `
         </div>
 
         {/* Game Information */}
@@ -466,6 +615,8 @@ const GameLobby: React.FC = () => {
                     className={`p-3 rounded-lg flex items-center ${
                       player.user_id === user?.user_id
                         ? "bg-purple-900/30 border border-purple-500"
+                        : disconnectedPlayers[player.user_id]
+                        ? "bg-gray-700 border border-yellow-500"
                         : "bg-gray-700"
                     }`}
                   >
@@ -478,6 +629,11 @@ const GameLobby: React.FC = () => {
                         {player.user_id === user?.user_id && (
                           <span className="ml-2 text-xs text-purple-400">
                             (You)
+                          </span>
+                        )}
+                        {disconnectedPlayers[player.user_id] && (
+                          <span className="ml-2 text-xs text-yellow-400">
+                            (Disconnected)
                           </span>
                         )}
                       </div>

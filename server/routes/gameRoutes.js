@@ -3,7 +3,7 @@ const router = express.Router();
 const bcrypt = require("bcryptjs");
 const { pool } = require("../config/db");
 const auth = require("../middleware/auth");
-const { Game } = require("../models/game");
+const { Game } = require("../models/Game");
 const Chat = require("../models/Chat");
 const SOCKET_EVENTS = require("../constants/socketEvents");
 
@@ -119,29 +119,60 @@ router.post("/:id/join", auth, async (req, res) => {
     // Get the socket server instance
     const io = req.app.get("io");
     if (io) {
-      // Broadcast to game room that a new player joined
-      io.of("/game")
-        .to(`game:${id}`)
-        .emit(SOCKET_EVENTS.PLAYER_JOINED, {
-          userId,
-          player: {
-            user_id: userId,
-            username: req.user.username,
-            is_alive: true,
-          },
+      if (result.reconnected) {
+        console.log("Player reconnected to game:", {
+          gameId: id,
+          userId: userId,
+          username: req.user.username,
         });
 
-      // Send updated player list to all clients
-      const gameDetails = await Game.getGameDetails(id);
-      io.of("/game").to(`game:${id}`).emit(SOCKET_EVENTS.PLAYERS_UPDATED, {
-        players: gameDetails.players,
-      });
+        // If this is a reconnection, emit the specific reconnection event
+        io.of("/game").to(`game:${id}`).emit(SOCKET_EVENTS.PLAYER_RECONNECTED, {
+          user_id: userId,
+          username: req.user.username,
+          game_id: id,
+          timestamp: new Date(),
+        });
+
+        // Always emit the updated player list
+        const gameDetails = await Game.getGameDetails(id);
+        io.of("/game").to(`game:${id}`).emit(SOCKET_EVENTS.PLAYERS_UPDATED, {
+          players: gameDetails.players,
+        });
+      } else {
+        console.log("New player joined game:", {
+          gameId: id,
+          userId: userId,
+          username: req.user.username,
+        });
+
+        // Broadcast to game room that a new player joined
+        io.of("/game")
+          .to(`game:${id}`)
+          .emit(SOCKET_EVENTS.PLAYER_JOINED, {
+            userId,
+            player: {
+              user_id: userId,
+              username: req.user.username,
+              is_alive: true,
+            },
+          });
+
+        // Send updated player list to all clients
+        const gameDetails = await Game.getGameDetails(id);
+        io.of("/game").to(`game:${id}`).emit(SOCKET_EVENTS.PLAYERS_UPDATED, {
+          players: gameDetails.players,
+        });
+      }
     }
 
     res.status(201).json({
-      message: "Successfully joined the game",
+      message: result.reconnected
+        ? "Successfully reconnected to the game"
+        : "Successfully joined the game",
       player_id: result.player_id,
       game_id: result.game_id,
+      reconnected: result.reconnected,
     });
   } catch (error) {
     console.error("Error joining game:", error);

@@ -31,6 +31,7 @@ const SOCKET_EVENTS = {
   PLAYER_READY: "player_ready",
   PLAYER_READY_UPDATE: "player_ready_update",
   PLAYER_DISCONNECTED: "player_disconnected",
+  PLAYER_RECONNECTED: "player_reconnected",
   PLAYERS_UPDATED: "players_updated",
 
   // Game phases

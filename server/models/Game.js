@@ -118,6 +118,25 @@ class Game {
       const playerValues = [game.game_id, hostUserId, true];
       await client.query(playerQuery, playerValues);
 
+      // Record game creation event in game_events table
+      const eventQuery = `
+        INSERT INTO game_events (game_id, event_type, event_data)
+        VALUES ($1, $2, $3)
+      `;
+      const eventValues = [
+        game.game_id,
+        "game_created",
+        JSON.stringify({
+          host_id: hostUserId,
+          host_username: hostUser.username,
+          game_mode: gameMode,
+          max_players: maxPlayers,
+          password_protected: passwordProtected,
+          settings: settings,
+        }),
+      ];
+      await client.query(eventQuery, eventValues);
+
       await client.query("COMMIT");
 
       // Get the global io instance
@@ -253,8 +272,37 @@ class Game {
         throw new Error("Cannot join a game that has already started");
       }
 
+      // Check if player is already in the game
       if (game.already_joined) {
-        throw new Error("Already in this game");
+        // Get the username of the player for the event data
+        const userQuery = `
+          SELECT username FROM users WHERE user_id = $1
+        `;
+        const userResult = await client.query(userQuery, [userId]);
+        const username =
+          userResult.rows.length > 0 ? userResult.rows[0].username : "Unknown";
+
+        // Record reconnection event
+        await client.query(
+          `INSERT INTO game_events (game_id, event_type, event_data)
+           VALUES ($1, 'player_reconnected', $2)`,
+          [gameId, JSON.stringify({ user_id: userId, username })]
+        );
+
+        // Get player_id for the reconnected player
+        const playerQuery = `
+          SELECT id as player_id FROM player_games
+          WHERE game_id = $1 AND user_id = $2`;
+        const playerResult = await client.query(playerQuery, [gameId, userId]);
+
+        await client.query("COMMIT");
+
+        // Return the same structure as a new join
+        return {
+          player_id: playerResult.rows[0].player_id,
+          game_id: gameId,
+          reconnected: true,
+        };
       }
 
       if (parseInt(game.current_players) >= game.max_players) {
@@ -289,6 +337,7 @@ class Game {
       return {
         player_id: result.rows[0].player_id,
         game_id: gameId,
+        reconnected: false,
       };
     } catch (error) {
       await client.query("ROLLBACK");

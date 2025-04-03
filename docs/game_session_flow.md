@@ -149,7 +149,7 @@ sequenceDiagram
         API->>Socket: Broadcast Player Left
         Socket-->>Players: Player List Updated
         Socket-->>Host: Player Left Event
-    else Player Disconnects
+    else Player Disconnects in Lobby
         Socket->>DB: Detect Disconnection
         DB->>DB: Start Reconnection Timer
 
