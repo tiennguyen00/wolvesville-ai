@@ -163,6 +163,33 @@ sequenceDiagram
             Socket->>Players: Player Removed Event
             Socket->>Host: Player Timeout Event
         end
+    else Chat in Game Lobby
+        Player->>Socket: Send Chat Message
+        Note over Player,Socket: {message, timestamp, player_info}
+
+        Socket->>DB: Store Message
+        DB-->>Socket: Message Stored
+
+        Socket->>Players: Broadcast Message
+        Socket->>Host: Broadcast Message
+
+        Socket-->>Player: Message Delivery Confirmation
+    else Ready Up for Game Start
+        Player->>API: POST /api/games/:id/ready
+        Note over Player,API: {ready_status: true/false}
+
+        API->>DB: Update Player Status
+        DB-->>API: Status Updated
+
+        API->>Socket: Broadcast Ready Status
+        Socket-->>Players: Player Ready Status Updated
+        Socket-->>Host: Player Ready Status Updated
+        Socket-->>Player: Ready Status Confirmed
+
+        alt All Players Ready
+            Socket->>Host: All Players Ready Notification
+            Note over Socket,Host: Host can now start the game
+        end
     end
 ```
 

@@ -311,7 +311,6 @@ const GameLobby: React.FC = () => {
               Host: <span className="text-purple-400">{hostUsername}</span>
             </p>
           </div>
-
           <div className="flex flex-col mt-4 space-y-2 md:mt-0 sm:flex-row sm:space-y-0 sm:space-x-2">
             {isHost && countdown === null && (
               <button
@@ -345,7 +344,6 @@ const GameLobby: React.FC = () => {
                 Start Game
               </button>
             )}
-
             {isHost && countdown === null && (
               <>
                 <button
@@ -391,7 +389,6 @@ const GameLobby: React.FC = () => {
                 </button>
               </>
             )}
-
             {isHost && countdown !== null && (
               <button
                 onClick={() => setCountdown(null)}
@@ -414,7 +411,6 @@ const GameLobby: React.FC = () => {
                 Cancel ({countdown}s)
               </button>
             )}
-
             {!isHost && countdown !== null && (
               <div className="inline-flex items-center px-4 py-2 text-white bg-purple-700 rounded-md">
                 <svg
@@ -440,11 +436,17 @@ const GameLobby: React.FC = () => {
                 Game starting in {countdown}s
               </div>
             )}
-
-            <button onClick={leaveGame} className="btn-secondary pixel-button">
-              Leave Game
-            </button>
+            `
+            {!isHost && (
+              <button
+                onClick={leaveGame}
+                className="btn-secondary pixel-button"
+              >
+                Leave Game
+              </button>
+            )}
           </div>
+          `
         </div>
 
         {/* Game Information */}
