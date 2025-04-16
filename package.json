@@ -10,7 +10,7 @@
     "server": "nodemon server/index.js",
     "db:init-demo": "node server/scripts/init-demo-data.js",
     "db:schema": "node -e \"require('fs').readFileSync('server/scripts/db-setup.sql', 'utf8').split(';').forEach(query => console.log(query + ';\\n'))\"",
-    "db:setup": "PGPASSWORD=postgres psql -U admin -d wolvesville -h localhost -f server/scripts/db-setup.sql",
+    "db:setup": "cross-env PGPASSWORD=123456 psql -U postgres -d wolvesville -h localhost -f server/scripts/db-setup.sql",
     "start:dev": "concurrently \"npm run dev\" \"npm run server\""
   },
   "dependencies": {
@@ -42,6 +42,7 @@
     "@vitejs/plugin-react": "^4.0.3",
     "autoprefixer": "^10.4.16",
     "concurrently": "^8.2.2",
+    "cross-env": "^7.0.3",
     "eslint": "^8.45.0",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.3",
