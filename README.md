@@ -1,6 +1,6 @@
 # Wolvesville Web Application
 
-A web-based implementation of the popular social deduction game Wolvesville, where players take on roles as villagers and werewolves in a battle of wits and deception.
+A real-time social deduction game where players secretly become villagers or werewolves. Through strategic discussion, voting, and unique abilities, villagers must identify the werewolves before being outnumbered, while werewolves attempt to remain hidden and eliminate the village.
 
 ## Features (MVP for 1-month Demo)
 
