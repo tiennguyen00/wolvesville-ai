@@ -140,6 +140,29 @@ const GameLobby: React.FC = () => {
       navigate("/games");
     });
 
+    return () => {
+      socket.off(SOCKET_EVENTS.USER_JOINED_ROOM);
+      socket.off(SOCKET_EVENTS.USER_LEFT_ROOM);
+      socket.off(SOCKET_EVENTS.USER_WAS_KICKED);
+      socket.off(SOCKET_EVENTS.HOST_TRANSFERRED);
+      socket.off(SOCKET_EVENTS.GAME_ENDED);
+
+      // Clear all timers on component unmount
+      Object.values(reconnectionTimers).forEach((timer) => clearTimeout(timer));
+
+      unsubscribeFromPlayerUpdates(
+        gameId || "",
+        user?.username || user?.user_id || "",
+        (data) => {
+          refetchGameData();
+        }
+      );
+    };
+  }, [isAuthenticated, gameId, socket]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !gameId || !socket) return;
+
     // When a user temporarily disconnects from the game lobby
     socket.on(SOCKET_EVENTS.PLAYER_DISCONNECTED, (data: any) => {
       // Get the user_id and username from the data (server now sends both)
@@ -229,26 +252,10 @@ const GameLobby: React.FC = () => {
     });
 
     return () => {
-      socket.off(SOCKET_EVENTS.USER_JOINED_ROOM);
-      socket.off(SOCKET_EVENTS.USER_LEFT_ROOM);
-      socket.off(SOCKET_EVENTS.USER_WAS_KICKED);
-      socket.off(SOCKET_EVENTS.HOST_TRANSFERRED);
-      socket.off(SOCKET_EVENTS.GAME_ENDED);
-      socket.off(SOCKET_EVENTS.PLAYER_DISCONNECTED);
-      socket.off(SOCKET_EVENTS.PLAYER_RECONNECTED);
-
-      // Clear all timers on component unmount
-      Object.values(reconnectionTimers).forEach((timer) => clearTimeout(timer));
-
-      unsubscribeFromPlayerUpdates(
-        gameId || "",
-        user?.username || user?.user_id || "",
-        (data) => {
-          refetchGameData();
-        }
-      );
+      socket?.off(SOCKET_EVENTS.PLAYER_RECONNECTED);
+      socket?.off(SOCKET_EVENTS.PLAYER_DISCONNECTED);
     };
-  }, [isAuthenticated, gameId, socket, disconnectedPlayers]);
+  }, [disconnectedPlayers]);
 
   // Update host status when game data changes
   useEffect(() => {

@@ -43,17 +43,19 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({
   return (
     <ToastContext.Provider value={{ toast }}>
       {children}
-      {toasts.map((toast) => (
-        <Toast
-          key={toast.id}
-          id={toast.id}
-          title={toast.title}
-          content={toast.content}
-          status={toast.status}
-          duration={toast.duration}
-          onClose={removeToast}
-        />
-      ))}
+      <div className="fixed z-50 flex-col m-4 space-y-4 top-10 right-2">
+        {toasts.map((toast) => (
+          <Toast
+            key={toast.id}
+            id={toast.id}
+            title={toast.title}
+            content={toast.content}
+            status={toast.status}
+            duration={toast.duration}
+            onClose={removeToast}
+          />
+        ))}
+      </div>
     </ToastContext.Provider>
   );
 };

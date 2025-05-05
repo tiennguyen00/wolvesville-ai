@@ -66,7 +66,9 @@ app.get("/api/test-db", async (req, res) => {
   try {
     console.log("Connecting to PostgreSQL database...");
     await pool.query("SELECT 1"); // Simple query to test connection
-    console.log("Database connection established successfully!");
+    console.log(
+      "========== Database connection established successfully! =========="
+    );
   } catch (error) {
     console.error("Database connection error:", error);
     console.log(

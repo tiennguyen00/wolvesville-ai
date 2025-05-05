@@ -117,7 +117,7 @@ router.post("/:id/join", auth, async (req, res) => {
     const result = await Game.joinGame(id, userId, game_password);
 
     // Get the socket server instance
-    const io = req.app.get("io");
+    const { io } = require("../index");
     if (io) {
       if (result.reconnected) {
         console.log("Player reconnected to game:", {
@@ -517,7 +517,7 @@ router.post("/:id/kick", auth, async (req, res) => {
     const result = await Game.kickPlayer(id, hostUserId, target_user_id);
 
     // Get the socket server instance
-    const io = req.app.get("io");
+    const { io } = require("../index");
     if (io) {
       // Send updated player list to all clients
       const gameDetails = await Game.getGameDetails(id);

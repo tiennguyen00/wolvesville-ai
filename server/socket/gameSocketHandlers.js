@@ -253,7 +253,7 @@ const setupGameSocketHandlers = (io) => {
             [gameId, JSON.stringify({ user_id: userId, username })]
           );
 
-          // Notify all clients in the room with more complete data
+          // Notify all clients in the room
           socket.to(`game:${gameId}`).emit(SOCKET_EVENTS.PLAYER_DISCONNECTED, {
             userId,
             username,
@@ -283,6 +283,7 @@ const setupGameSocketHandlers = (io) => {
 
         // Store gameId in the socket object for disconnect handling
         gameId = roomGameId;
+        console.log("username: ", username);
         console.log(`User ${userId} joining game room: ${gameId}`);
 
         // Join the socket room
